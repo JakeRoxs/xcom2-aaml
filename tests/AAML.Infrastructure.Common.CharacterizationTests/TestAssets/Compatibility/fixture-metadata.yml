@@ -26,6 +26,14 @@ fixtures:
   settings/global-opted-out.json:
     source: Classes/GlobalSettings.cs
     line_endings: lf
+  settings/legacy-preferences.json:
+    source: Classes/Settings.cs and Classes/XCOM/Arguments.cs
+    wire_contract: Newtonsoft.Json 13.0.3 default property names and ObjectCreationHandling.Replace
+    line_endings: lf
+  settings/legacy-tag-colors.json:
+    source: Classes/Settings.cs and Classes/Mod/ModTag.cs
+    wire_contract: Newtonsoft.Json 13.0.3 System.Drawing.ColorConverter strings (name; R,G,B; A,R,G,B)
+    line_endings: lf
   ini/vanilla-XComEngine.ini:
     source: Classes/XCOM/*.cs
     line_endings: crlf-compatible

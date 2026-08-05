@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "AAML mod stack launcher mark",
+  "created": "2026-08-05",
+  "creator": "AAML project",
+  "repository": "https://github.com/JakeRoxs/xcom2-aaml",
+  "license": "GPL-3.0-only",
+  "canonicalSource": "assets/branding/aaml-icon.svg",
+  "generator": "eng/generate-brand-assets.ps1",
+  "method": "Original geometric primitives: rounded rectangles, routed strokes, circles, and triangles.",
+  "concept": "Three mod cartridges converge into a launch arrow, representing mod selection, ordering, and game launch.",
+  "externalAssets": [],
+  "legacyAssets": [],
+  "declaration": "Created for AAML without copying or tracing XCOM, Firaxis, legacy AML, or externally downloaded artwork."
+}

@@ -8,6 +8,7 @@ using AAML.Application;
 using AAML.Application.Diagnostics;
 using AAML.Application.Ports;
 using AAML.Application.Settings;
+using AAML.Application.Launching;
 
 namespace AAML.Avalonia.Tests;
 
@@ -95,6 +96,7 @@ public sealed class ProductionSectionTests
         (await Execute(viewModel.ApplyActiveMods)).Error.Should().Be("Preview active mods before applying.");
         (await Execute(viewModel.ApplySnapshots)).Error.Should().Be("Preview legacy snapshots before applying.");
         (await Execute(viewModel.ApplyOverrideCleanup)).Error.Should().Be("Preview override cleanup before applying.");
+        (await Execute(viewModel.ApplyModRoots)).Error.Should().Be("Preview existing mod roots before confirming.");
     }
 
     [TestMethod]
@@ -171,6 +173,13 @@ public sealed class ProductionSectionTests
 
     private static object CreateMock(Type type)
     {
+        if (type == typeof(ILaunchArgumentPresetService))
+        {
+            var repository = new Mock<ILegacyLaunchArgumentSuggestionRepository>();
+            repository.Setup(port => port.LoadAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new LegacyLaunchArgumentSuggestionReadResult(null, []));
+            return new LaunchArgumentPresetService(repository.Object);
+        }
         var mock = Activator.CreateInstance(typeof(Mock<>).MakeGenericType(type))!;
         return mock.GetType().GetProperties().Single(property => property.Name == nameof(Mock<object>.Object) && property.PropertyType == type).GetValue(mock)!;
     }

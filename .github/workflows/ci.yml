@@ -48,6 +48,16 @@ jobs:
       - run: dotnet restore AAML.slnx --locked-mode
       - run: dotnet build AAML.slnx --configuration Release --no-restore
       - run: dotnet test AAML.slnx --configuration Release --no-build --filter TestCategory!=SteamLive
+      - shell: pwsh
+        run: ./eng/test-brand-assets.ps1
+      - if: runner.os == 'Linux'
+        name: Validate Linux desktop metadata
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes appstream desktop-file-utils
+          desktop-file-validate eng/linux/io.github.jakeroxs.xcom2_aaml.desktop
+          appstreamcli validate --pedantic eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml
 
   package:
     name: Package policy (${{ matrix.rid }})
@@ -86,6 +96,16 @@ jobs:
         run: ./eng/test-release-license-catalog.ps1
       - shell: pwsh
         run: ./eng/test-release-evidence.ps1
+      - shell: pwsh
+        run: ./eng/test-brand-assets.ps1
+      - if: matrix.rid == 'linux-x64'
+        name: Validate Linux desktop metadata
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes appstream desktop-file-utils
+          desktop-file-validate eng/linux/io.github.jakeroxs.xcom2_aaml.desktop
+          appstreamcli validate --pedantic eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml
       - shell: pwsh
         run: ./eng/stage-aaml-package.ps1 -Rid '${{ matrix.rid }}' -OutputDirectory '${{ runner.temp }}/AAML Package/${{ matrix.rid }}' -Version '0.0.0-ci.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -VerifyTrackedSourceInputs
       - shell: pwsh

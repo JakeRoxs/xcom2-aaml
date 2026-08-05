@@ -14,6 +14,10 @@ $project = Join-Path $root 'src/AAML.Avalonia/AAML.Avalonia.csproj'
 if ($VerifyTrackedSourceInputs) {
     $sourceInputs = @(
         'eng/linux/aaml-proton-launch-option.sh',
+        'eng/linux/io.github.jakeroxs.xcom2_aaml.desktop',
+        'eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml',
+        'eng/generate-brand-assets.ps1',
+        'eng/test-brand-assets.ps1',
         'eng/package-manifests/aaml-linux-x64.json',
         'eng/package-manifests/aaml-win-x64.json',
         'eng/generate-release-evidence.ps1',
@@ -26,6 +30,10 @@ if ($VerifyTrackedSourceInputs) {
         'eng/validate-aaml-artifact.ps1',
         '.github/workflows/release.yml',
         'src/AAML.Avalonia/packages.lock.json',
+        'assets/branding/aaml-icon.svg',
+        'assets/branding/provenance.json',
+        'assets/branding/generated/asset-manifest.json',
+        'assets/branding/generated/aaml.ico',
         'src/AAML.Infrastructure.Steam/steamworks-manifest.json',
         'src/ThirdParty/Steamworks.NET/LICENSE.txt',
         'src/ThirdParty/redistributable_bin/linux64/libsteam_api.so',
@@ -34,6 +42,7 @@ if ($VerifyTrackedSourceInputs) {
         'tools/AAML.SteamProbe/packages.lock.json',
         'LICENSE'
     )
+    $sourceInputs += @(Get-ChildItem -LiteralPath (Join-Path $root 'assets/branding/generated/png') -File | ForEach-Object { [System.IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/') })
     $sourceInputs += @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'license-sources') -File -Recurse | ForEach-Object { [System.IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/') })
     $sourceInputs += @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'license-texts') -File -Recurse | ForEach-Object { [System.IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/') })
     foreach ($sourceInput in $sourceInputs) {
@@ -81,10 +90,31 @@ Copy-Item -LiteralPath (Join-Path $root 'src/ThirdParty/Steamworks.NET/LICENSE.t
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $licenses 'AAML-GPL-3.0.txt')
 Copy-Item -LiteralPath (Join-Path $root 'src/AAML.Infrastructure.Steam/steamworks-manifest.json') -Destination $OutputDirectory
 
+$brandingDirectory = Join-Path $OutputDirectory 'branding'
+New-Item -ItemType Directory -Path $brandingDirectory -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'assets/branding/aaml-icon.svg') -Destination $brandingDirectory
+Copy-Item -LiteralPath (Join-Path $root 'assets/branding/provenance.json') -Destination $brandingDirectory
+Copy-Item -LiteralPath (Join-Path $root 'assets/branding/generated/asset-manifest.json') -Destination $brandingDirectory
+
 if ($Rid -eq 'win-x64') {
     Copy-Item -LiteralPath (Join-Path $root 'src/ThirdParty/redistributable_bin/win64/steam_api64.dll') -Destination $OutputDirectory
+    Copy-Item -LiteralPath (Join-Path $root 'assets/branding/generated/aaml.ico') -Destination $brandingDirectory
 } else {
     Copy-Item -LiteralPath (Join-Path $root 'src/ThirdParty/redistributable_bin/linux64/libsteam_api.so') -Destination $OutputDirectory
+    $applicationsDirectory = Join-Path $OutputDirectory 'share/applications'
+    $metainfoDirectory = Join-Path $OutputDirectory 'share/metainfo'
+    New-Item -ItemType Directory -Path $applicationsDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $metainfoDirectory -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $root 'eng/linux/io.github.jakeroxs.xcom2_aaml.desktop') -Destination $applicationsDirectory
+    Copy-Item -LiteralPath (Join-Path $root 'eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml') -Destination $metainfoDirectory
+    foreach ($size in @(16, 32, 48, 64, 128, 256, 512)) {
+        $iconDirectory = Join-Path $OutputDirectory "share/icons/hicolor/${size}x$size/apps"
+        New-Item -ItemType Directory -Path $iconDirectory -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $root "assets/branding/generated/png/aaml-$size.png") -Destination (Join-Path $iconDirectory 'io.github.jakeroxs.xcom2_aaml.png')
+    }
+    $scalableDirectory = Join-Path $OutputDirectory 'share/icons/hicolor/scalable/apps'
+    New-Item -ItemType Directory -Path $scalableDirectory -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $root 'assets/branding/aaml-icon.svg') -Destination (Join-Path $scalableDirectory 'io.github.jakeroxs.xcom2_aaml.svg')
     if (-not $IsWindows) {
         chmod +x (Join-Path $OutputDirectory 'AAML.Avalonia')
         chmod +x (Join-Path $OutputDirectory 'tools/proton-wrapper/AAML.ProtonWrapper')

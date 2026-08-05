@@ -97,7 +97,16 @@ jobs:
         run: |
           ./eng/test-release-license-catalog.ps1
           ./eng/test-release-evidence.ps1
+          ./eng/test-brand-assets.ps1
           ./eng/test-release-workflow.ps1
+      - if: matrix.rid == 'linux-x64'
+        name: Validate Linux desktop metadata
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes appstream desktop-file-utils
+          desktop-file-validate eng/linux/io.github.jakeroxs.xcom2_aaml.desktop
+          appstreamcli validate --pedantic eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml
       - name: Stage exact payload
         shell: pwsh
         run: >-

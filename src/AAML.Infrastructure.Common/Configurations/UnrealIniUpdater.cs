@@ -20,7 +20,7 @@ public static class UnrealIniUpdater
         for (var index = end - 1; index > start; index--)
         {
             var separator = lines[index].IndexOf('=');
-            if (separator >= 0 && lines[index][..separator].Trim().Equals(key, StringComparison.OrdinalIgnoreCase)) lines.RemoveAt(index);
+            if (separator >= 0 && lines[index][..separator].Trim().TrimStart('+', '-', '.', '!').Trim().Equals(key, StringComparison.OrdinalIgnoreCase)) lines.RemoveAt(index);
         }
         var snapshot = values.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         lines.InsertRange(start + 1, snapshot.Select(value => $"{key}={value}"));

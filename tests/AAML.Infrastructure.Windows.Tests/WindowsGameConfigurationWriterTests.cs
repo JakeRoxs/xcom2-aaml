@@ -22,8 +22,8 @@ public sealed class WindowsGameConfigurationWriterTests
         try
         {
             Directory.CreateDirectory(config);
-            await File.WriteAllTextAsync(Path.Combine(config, "XComModOptions.ini"), "[Other]\nKeep=Yes\n[Engine.XComModOptions]\nActiveMods=Old\n", TestContext.CancellationToken);
-            await File.WriteAllTextAsync(Path.Combine(config, "XComEngine.ini"), "[Engine.DownloadableContentEnumerator]\nModRootDirs=OldRoot\n[Other]\nKeep=Yes\n", TestContext.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(config, "XComModOptions.ini"), "[Other]\nKeep=Yes\n[Engine.XComModOptions]\n+ActiveMods=OldAdded\n!ActiveMods=ClearArray\nActiveMods=Old\n", TestContext.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(config, "XComEngine.ini"), "[Engine.DownloadableContentEnumerator]\n+ModRootDirs=OldAddedRoot\n-ModRootDirs=OldRemovedRoot\n!ModRootDirs=ClearArray\nModRootDirs=OldRoot\n[Other]\nKeep=Yes\n", TestContext.CancellationToken);
             var atomic = new RecordingAtomicWriter();
             var writer = new WindowsGameConfigurationWriter(atomic, documents);
             var mods = new[]
@@ -38,8 +38,8 @@ public sealed class WindowsGameConfigurationWriterTests
             result.Value!.WrittenFiles.Should().Equal(Path.Combine(config, "XComModOptions.ini"), Path.Combine(config, "XComEngine.ini"));
             result.Value.ActivePackageIds.Select(id => id.Value).Should().Equal("First", "Second");
             result.Value.ModRootLocations.Should().Equal("C:\\Steam\\steamapps\\workshop\\content\\268500", "D:\\Manual Mods");
-            atomic.Contents[Path.Combine(config, "XComModOptions.ini")].Should().Contain("Keep=Yes").And.Contain("ActiveMods=First\nActiveMods=Second").And.NotContain("ActiveMods=Old");
-            atomic.Contents[Path.Combine(config, "XComEngine.ini")].Should().Contain("Keep=Yes").And.Contain("ModRootDirs=C:\\Steam\\steamapps\\workshop\\content\\268500\\\nModRootDirs=D:\\Manual Mods\\").And.NotContain("ModRootDirs=OldRoot");
+            atomic.Contents[Path.Combine(config, "XComModOptions.ini")].Should().Contain("Keep=Yes").And.Contain("ActiveMods=First\nActiveMods=Second").And.NotContain("OldAdded").And.NotContain("ClearArray").And.NotContain("ActiveMods=Old");
+            atomic.Contents[Path.Combine(config, "XComEngine.ini")].Should().Contain("Keep=Yes").And.Contain("ModRootDirs=C:\\Steam\\steamapps\\workshop\\content\\268500\\\nModRootDirs=D:\\Manual Mods\\").And.NotContain("OldAddedRoot").And.NotContain("OldRemovedRoot").And.NotContain("ClearArray").And.NotContain("ModRootDirs=OldRoot");
         }
         finally { if (Directory.Exists(documents)) Directory.Delete(documents, true); }
     }

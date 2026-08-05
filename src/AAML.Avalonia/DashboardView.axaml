@@ -14,7 +14,32 @@
         <TextBlock Grid.Row="6" Text="Manual/mod roots" />
         <TextBox Grid.Row="6" Grid.Column="1" MinHeight="72" AcceptsReturn="True" Text="{Binding ModRoots, UpdateSourceTrigger=PropertyChanged}" TextChanged="OnModRootsChanged" PlaceholderText="One existing directory per line" />
         <TextBlock Grid.Row="8" Text="Launch arguments" />
-        <TextBox AutomationProperties.AutomationId="DashboardLaunchArgumentsTextBox" Grid.Row="8" Grid.Column="1" MinHeight="96" AcceptsReturn="True" Text="{Binding LaunchArguments, UpdateSourceTrigger=PropertyChanged}" TextChanged="OnLaunchArgumentsChanged" PlaceholderText="One structured argument per line" />
+        <StackPanel Grid.Row="8" Grid.Column="1" Spacing="8">
+          <TextBox AutomationProperties.AutomationId="DashboardLaunchArgumentsTextBox" MinHeight="96" AcceptsReturn="True" Text="{Binding LaunchArguments, UpdateSourceTrigger=PropertyChanged}" TextChanged="OnLaunchArgumentsChanged" PlaceholderText="One structured argument per line" />
+          <Expander AutomationProperties.AutomationId="DashboardLaunchPresetPicker" Header="Launch argument presets" IsExpanded="False">
+            <StackPanel Margin="0,8,0,0" Spacing="6">
+              <TextBlock Classes="muted" Text="Suggestions only. Presets edit this draft and never launch the game or write game configuration." TextWrapping="Wrap" />
+              <ItemsControl ItemsSource="{Binding LaunchArgumentPresets}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="local:LaunchArgumentPresetOptionViewModel">
+                    <Grid MinHeight="48" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,2">
+                      <CheckBox AutomationProperties.AutomationId="{Binding Preset.Id, StringFormat=DashboardLaunchPreset-{0}}" Grid.RowSpan="3" MinWidth="48" MinHeight="48" VerticalContentAlignment="Center" IsEnabled="{Binding IsApplicable}" IsChecked="{Binding IsActive, Mode=TwoWay}" />
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                        <TextBlock FontWeight="SemiBold" Text="{Binding FriendlyName}" />
+                        <Border IsVisible="{Binding IsImported}" Padding="5,1" CornerRadius="4" Background="{DynamicResource SystemControlHighlightListLowBrush}"><TextBlock FontSize="11" Text="Imported" /></Border>
+                        <Border IsVisible="{Binding IsAdvanced}" Padding="5,1" CornerRadius="4" Background="{DynamicResource SystemControlHighlightListLowBrush}"><TextBlock FontSize="11" Text="Advanced" /></Border>
+                      </StackPanel>
+                      <TextBlock Grid.Row="1" Grid.Column="1" Classes="muted" Text="{Binding Description}" TextWrapping="Wrap" />
+                      <TextBlock Grid.Row="2" Grid.Column="1" FontFamily="Cascadia Mono,Consolas" Text="{Binding ArgumentTemplate}" />
+                      <TextBox AutomationProperties.AutomationId="{Binding Preset.Id, StringFormat=DashboardLaunchPresetValue-{0}}" Grid.Column="2" Grid.RowSpan="3" Width="150" MinHeight="44" VerticalContentAlignment="Center" IsVisible="{Binding RequiresValue}" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Required value" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock AutomationProperties.AutomationId="DashboardLaunchPresetDiagnostics" Classes="muted" Text="{Binding PresetDiagnostics}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Expander>
+        </StackPanel>
         <TextBlock Grid.Row="10" Text="Launch behavior" />
         <StackPanel Grid.Row="10" Grid.Column="1" Spacing="6"><CheckBox IsChecked="{Binding AllowLaunchWithMissingDependencies}" Content="Allow launch with missing dependencies" /><CheckBox IsChecked="{Binding CloseAfterLaunch}" Content="Close AAML after successful launch" /><CheckBox IsChecked="{Binding AllowMultipleInstances}" Content="Allow multiple AAML instances (applies next start)" /></StackPanel>
         <TextBlock Grid.Row="12" Text="Workshop checks" />

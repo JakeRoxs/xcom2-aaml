@@ -5,6 +5,7 @@ using AAML.Domain.Launching;
 using AAML.Domain.Mods;
 using AAML.Infrastructure.Common.Compatibility.Settings;
 using Newtonsoft.Json.Linq;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -13,7 +14,9 @@ namespace AAML.Infrastructure.Common.Settings;
 /// <summary>Migrates supported durable intent while discarding non-domain legacy state.</summary>
 public static class LegacySettingsMigrator
 {
-    public static Result<ApplicationSettings> Migrate(string json, Func<ModSource, string, Result<string>> normalizeLocation)
+    private static readonly string[] DefaultQuickToggleArguments = ["-review", "-noRedScreens", "-noStartUpMovies", "-allowConsole", "-regenerateinis"];
+
+    public static Result<LegacySettingsMigration> Migrate(string json, Func<ModSource, string, Result<string>> normalizeLocation)
     {
         ArgumentNullException.ThrowIfNull(json);
         ArgumentNullException.ThrowIfNull(normalizeLocation);
@@ -21,6 +24,7 @@ public static class LegacySettingsMigrator
         try
         {
             var root = JObject.Parse(json);
+            var diagnostics = new List<LegacySettingsMigrationDiagnostic>();
             var game = root.Value<uint?>("Game") switch
             {
                 882100 => GameVariant.ChimeraSquad,
@@ -33,7 +37,15 @@ public static class LegacySettingsMigrator
             foreach (var property in (root["Tags"] as JObject)?.Properties() ?? [])
             {
                 var name = property.Value.Value<string>("Label") ?? property.Name;
-                if (!string.IsNullOrWhiteSpace(name)) AddTag(tags, name);
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    var tag = AddTag(tags, name);
+                    if (property.Value is JObject tagObject)
+                    {
+                        var color = ReadColor(tagObject, $"Tags.{property.Name}.Color", diagnostics);
+                        if (color is not null) tags[tag.Name] = tag with { Color = color };
+                    }
+                }
             }
             var categoryEntries = root["Mods"]?["Entries"] as JObject;
             if (categoryEntries is not null)
@@ -72,7 +84,7 @@ public static class LegacySettingsMigrator
                 }
             }
 
-            return Result<ApplicationSettings>.Success(new ApplicationSettings(
+            var settings = new ApplicationSettings(
                 ApplicationSettingsDefaults.CurrentSchemaVersion,
                 game,
                 NormalizeOptionalPath(root.Value<string>("GamePath"), normalizeLocation),
@@ -81,13 +93,126 @@ public static class LegacySettingsMigrator
                 intents,
                 categories,
                 tags.Values.ToArray(),
-                false));
+                false,
+                CloseAfterLaunch: ReadBoolean(root, "CloseAfterLaunch", false, diagnostics),
+                WorkshopStartupRefresh: ReadWorkshopPolicy(root, diagnostics),
+                Theme: ReadBoolean(root, "DarkMode", false, diagnostics) ? ThemePreference.Dark : ThemePreference.Light,
+                AllowMultipleInstances: ReadBoolean(root, "AllowMultipleInstances", false, diagnostics),
+                ModGrid: new ModGridPreferences(
+                    ReadBoolean(root, "ShowHiddenElements", false, diagnostics),
+                    null,
+                    ReadBoolean(root, "ShowModListGroups", true, diagnostics),
+                    new HashSet<AAML.Application.Mods.Grid.ModGridGroupKey>()),
+                CheckForUpdates: ReadBoolean(root, "CheckForUpdates", true, diagnostics),
+                UpdateChannel: ReadUpdateChannel(root, diagnostics));
+            var report = new LegacySettingsMigrationReport(
+                1,
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json))).ToLowerInvariant(),
+                true,
+                ReadQuickToggleArguments(root, diagnostics),
+                diagnostics);
+            return Result<LegacySettingsMigration>.Success(new LegacySettingsMigration(settings, report));
         }
         catch (Exception exception) when (exception is Newtonsoft.Json.JsonException or InvalidDataException or ArgumentException)
         {
-            return Result<ApplicationSettings>.Failure(new Error("settings.migration_failed", exception.Message, ErrorKind.InvalidData));
+            return Result<LegacySettingsMigration>.Failure(new Error("settings.migration_failed", exception.Message, ErrorKind.InvalidData));
         }
     }
+
+    private static bool ReadBoolean(JObject root, string property, bool defaultValue, List<LegacySettingsMigrationDiagnostic> diagnostics)
+    {
+        var token = root[property];
+        if (token is null) return defaultValue;
+        if (token.Type == JTokenType.Boolean) return token.Value<bool>();
+        diagnostics.Add(Diagnostic("legacy_settings.invalid_boolean", property, $"{property} was not a boolean; the legacy default '{defaultValue}' was used."));
+        return defaultValue;
+    }
+
+    private static WorkshopStartupRefreshPolicy ReadWorkshopPolicy(JObject root, List<LegacySettingsMigrationDiagnostic> diagnostics)
+    {
+        var enabled = ReadBoolean(root, "UpdateModsOnStartup", true, diagnostics);
+        var activeOnly = ReadBoolean(root, "OnlyUpdateEnabledOrNewModsOnStartup", false, diagnostics);
+        return !enabled ? WorkshopStartupRefreshPolicy.Manual : activeOnly ? WorkshopStartupRefreshPolicy.ActiveMods : WorkshopStartupRefreshPolicy.AllMods;
+    }
+
+    private static UpdateChannelPreference ReadUpdateChannel(JObject root, List<LegacySettingsMigrationDiagnostic> diagnostics)
+    {
+        var prerelease = ReadBoolean(root, "CheckForPreReleaseUpdates", false, diagnostics);
+        var alpha = ReadBoolean(root, "IncludeAlphaVersions", false, diagnostics);
+        if (alpha && !prerelease)
+            diagnostics.Add(Diagnostic("legacy_settings.dormant_alpha_preference", "IncludeAlphaVersions", "IncludeAlphaVersions was enabled while prerelease checks were disabled; effective legacy behavior remained Stable."));
+        return prerelease ? alpha ? UpdateChannelPreference.Alpha : UpdateChannelPreference.Prerelease : UpdateChannelPreference.Stable;
+    }
+
+    private static IReadOnlyList<string> ReadQuickToggleArguments(JObject root, List<LegacySettingsMigrationDiagnostic> diagnostics)
+    {
+        var token = root["QuickToggleArguments"];
+        if (token is null) return DefaultQuickToggleArguments;
+        if (token is not JArray array)
+        {
+            diagnostics.Add(Diagnostic("legacy_settings.invalid_quick_toggle_arguments", "QuickToggleArguments", "QuickToggleArguments was not an array; no quick-toggle metadata was retained."));
+            return [];
+        }
+
+        var arguments = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < array.Count; index++)
+        {
+            if (array[index]?.Type != JTokenType.String || string.IsNullOrWhiteSpace(array[index]!.Value<string>()))
+            {
+                diagnostics.Add(Diagnostic("legacy_settings.invalid_quick_toggle_argument", $"QuickToggleArguments[{index}]", "The quick-toggle argument was not a non-empty string and was omitted."));
+                continue;
+            }
+
+            var argument = array[index]!.Value<string>()!.Trim();
+            if (seen.Add(argument)) arguments.Add(argument);
+        }
+        return arguments;
+    }
+
+    private static string? ReadColor(JObject tag, string path, List<LegacySettingsMigrationDiagnostic> diagnostics)
+    {
+        var token = tag["Color"];
+        if (token is null) return null;
+        if (token.Type != JTokenType.String || !TryNormalizeColor(token.Value<string>(), out var normalized))
+        {
+            diagnostics.Add(Diagnostic("legacy_settings.invalid_tag_color", path, "The legacy tag color was invalid and was omitted."));
+            return null;
+        }
+        return normalized;
+    }
+
+    private static bool TryNormalizeColor(string? value, out string normalized)
+    {
+        normalized = string.Empty;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var parts = value.Split(',', StringSplitOptions.TrimEntries);
+        byte alpha = byte.MaxValue;
+        byte red = 0;
+        byte green = 0;
+        byte blue = 0;
+        var numeric = parts.Length == 3 && TryByte(parts[0], out red) && TryByte(parts[1], out green) && TryByte(parts[2], out blue);
+        if (!numeric && parts.Length == 4)
+            numeric = TryByte(parts[0], out alpha) && TryByte(parts[1], out red) && TryByte(parts[2], out green) && TryByte(parts[3], out blue);
+        if (!numeric)
+        {
+            var color = System.Drawing.Color.FromName(value.Trim());
+            if (!color.IsKnownColor || color.IsSystemColor || color.IsEmpty) return false;
+            alpha = color.A;
+            red = color.R;
+            green = color.G;
+            blue = color.B;
+        }
+
+        normalized = alpha == byte.MaxValue
+            ? $"#{red:X2}{green:X2}{blue:X2}"
+            : $"#{red:X2}{green:X2}{blue:X2}{alpha:X2}";
+        return true;
+    }
+
+    private static bool TryByte(string value, out byte result) => byte.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out result);
+
+    private static LegacySettingsMigrationDiagnostic Diagnostic(string code, string path, string message) => new(code, path, message);
 
     private static void AddIntent(
         JObject mod,
@@ -154,3 +279,17 @@ public static class LegacySettingsMigrator
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
 }
+
+/// <summary>Contains migrated schema-9 settings and source-preservation metadata.</summary>
+public sealed record LegacySettingsMigration(ApplicationSettings Settings, LegacySettingsMigrationReport Report);
+
+/// <summary>Versioned, non-settings metadata retained for migration auditing and future quick-toggle adoption.</summary>
+public sealed record LegacySettingsMigrationReport(
+    int SchemaVersion,
+    string SourceSha256,
+    bool SourcePreserved,
+    IReadOnlyList<string> QuickToggleArguments,
+    IReadOnlyList<LegacySettingsMigrationDiagnostic> Diagnostics);
+
+/// <summary>Describes one recoverable legacy value that could not be represented.</summary>
+public sealed record LegacySettingsMigrationDiagnostic(string Code, string Path, string Message);

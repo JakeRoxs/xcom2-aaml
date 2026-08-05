@@ -4,6 +4,7 @@ using ReactiveUI;
 using Zafiro.UI.Commands;
 using Zafiro.UI.Shell.Utils;
 using AAML.Application.Settings;
+using AAML.Application.Launching;
 using AAML.Domain.Launching;
 
 namespace AAML.Avalonia;
@@ -13,6 +14,8 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
 {
     private const string AutoSaveOwner = "dashboard";
     private readonly ApplicationSession session;
+    private readonly ILaunchArgumentPresetService presetService;
+    private bool presetsLoaded;
     private GameVariant selectedGame = GameVariant.XCom2;
     private string gameInstallationPath = string.Empty;
     private bool allowLaunchWithMissingDependencies;
@@ -31,10 +34,11 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
     private bool disposed;
     private readonly IApplicationUiController ui;
 
-    public DashboardViewModel(ApplicationSession session, IApplicationUiController ui)
+    public DashboardViewModel(ApplicationSession session, IApplicationUiController ui, ILaunchArgumentPresetService presetService)
     {
         this.session = session;
         this.ui = ui;
+        this.presetService = presetService;
         session.PropertyChanged += OnSessionPropertyChanged;
         session.RegisterAutoSaveOwner(AutoSaveOwner, () => preferencesDirty, SavePreferencesCoreAsync);
         LoadPreferencesDraft();
@@ -45,6 +49,7 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
         DiscardPreferences = ReactiveCommand.CreateFromTask(DiscardPreferencesAsync).Enhance(text: "Discard edits", name: "DiscardPreferences");
         ApplyConfiguration = ReactiveCommand.CreateFromTask(async () => (await session.ApplyConfigurationAsync(CancellationToken.None)).IsSuccess ? Result.Success() : Result.Failure(session.Status)).Enhance(text: "Apply configuration", name: "ApplyConfiguration");
         Launch = ReactiveCommand.CreateFromTask(async () => { var result = await session.LaunchAsync(CancellationToken.None); if (result.IsSuccess && session.Settings?.CloseAfterLaunch == true) ui.Shutdown(); return result.IsSuccess ? Result.Success() : Result.Failure(session.Status); }).Enhance(text: "Launch game", name: "LaunchGame");
+        SetPresets(presetService.BuiltIns);
     }
 
     public IReadOnlyList<GameVariant> Games { get; } = Enum.GetValues<GameVariant>();
@@ -58,9 +63,9 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
     public string Status => session.Status;
     public string Origin => session.Origin?.ToString() ?? "Not loaded";
     public string GameInstallationPath { get => gameInstallationPath; set => this.RaiseAndSetIfChanged(ref gameInstallationPath, value); }
-    public GameVariant SelectedGame { get => selectedGame; set => this.RaiseAndSetIfChanged(ref selectedGame, value); }
+    public GameVariant SelectedGame { get => selectedGame; set { if (selectedGame == value) return; this.RaiseAndSetIfChanged(ref selectedGame, value); RefreshPresets(); } }
     public bool AllowLaunchWithMissingDependencies { get => allowLaunchWithMissingDependencies; set { if (allowLaunchWithMissingDependencies == value) return; this.RaiseAndSetIfChanged(ref allowLaunchWithMissingDependencies, value); MarkPreferencesDirty(); } }
-    public string LaunchArguments { get => launchArguments; set { if (launchArguments == value) return; this.RaiseAndSetIfChanged(ref launchArguments, value); MarkPreferencesDirty(); } }
+    public string LaunchArguments { get => launchArguments; set { if (launchArguments == value) return; this.RaiseAndSetIfChanged(ref launchArguments, value); RefreshPresets(); MarkPreferencesDirty(); } }
     public string ModRoots { get => modRoots; set { if (modRoots == value) return; this.RaiseAndSetIfChanged(ref modRoots, value); MarkPreferencesDirty(); } }
     public bool CloseAfterLaunch { get => closeAfterLaunch; set { if (closeAfterLaunch == value) return; this.RaiseAndSetIfChanged(ref closeAfterLaunch, value); MarkPreferencesDirty(); } }
     public WorkshopStartupRefreshPolicy WorkshopStartupRefresh { get => workshopStartupRefresh; set { if (workshopStartupRefresh == value) return; this.RaiseAndSetIfChanged(ref workshopStartupRefresh, value); MarkPreferencesDirty(); } }
@@ -71,6 +76,8 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
     public bool CheckForUpdates { get => checkForUpdates; set { if (checkForUpdates == value) return; this.RaiseAndSetIfChanged(ref checkForUpdates, value); MarkPreferencesDirty(); } }
     public UpdateChannelPreference UpdateChannel { get => updateChannel; set { if (updateChannel == value) return; this.RaiseAndSetIfChanged(ref updateChannel, value); MarkPreferencesDirty(); } }
     public IReadOnlyList<UpdateChannelPreference> UpdateChannelOptions { get; } = Enum.GetValues<UpdateChannelPreference>();
+    public IReadOnlyList<LaunchArgumentPresetOptionViewModel> LaunchArgumentPresets { get; private set; } = [];
+    public string PresetDiagnostics { get; private set; } = string.Empty;
     public bool AutoSaveChanges
     {
         get => autoSaveChanges;
@@ -82,7 +89,56 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
         }
     }
 
-    public void Activate() => session.ActivateAutoSaveOwner(AutoSaveOwner);
+    public void Activate()
+    {
+        session.ActivateAutoSaveOwner(AutoSaveOwner);
+        if (!presetsLoaded) _ = LoadPresetsAsync();
+    }
+
+    internal void SetPresetActive(LaunchArgumentPreset preset, bool active, string value)
+    {
+        var lines = ArgumentLines().ToList();
+        if (active)
+        {
+            if (!preset.AppliesTo(SelectedGame)) { RefreshPresets(); return; }
+            var formatted = preset.Format(value);
+            if (formatted is null || lines.Any(preset.Matches))
+            {
+                RefreshPresets();
+                return;
+            }
+
+            var presetIndex = PresetIndex(preset);
+            var insertion = lines.Count;
+            for (var index = 0; index < lines.Count; index++)
+            {
+                var matchingPreset = LaunchArgumentPresets.FirstOrDefault(option => option.Preset.Matches(lines[index]))?.Preset;
+                if (matchingPreset is null) continue;
+                var laterIndex = PresetIndex(matchingPreset);
+                if (laterIndex > presetIndex) { insertion = index; break; }
+            }
+            lines.Insert(insertion, formatted);
+            LaunchArguments = string.Join(Environment.NewLine, lines);
+            return;
+        }
+
+        var ownedIndex = lines.FindIndex(preset.Matches);
+        if (ownedIndex < 0) { RefreshPresets(); return; }
+        lines.RemoveAt(ownedIndex);
+        LaunchArguments = string.Join(Environment.NewLine, lines);
+    }
+
+    internal void UpdatePresetValue(LaunchArgumentPreset preset, string value)
+    {
+        var formatted = preset.Format(value);
+        if (formatted is null) return;
+        var lines = ArgumentLines().ToList();
+        var index = lines.FindIndex(preset.Matches);
+        if (index < 0) return;
+        if (lines[index].Equals(formatted, StringComparison.Ordinal)) return;
+        lines[index] = formatted;
+        LaunchArguments = string.Join(Environment.NewLine, lines);
+    }
 
     private async Task<Result> SavePreferencesAsync()
     {
@@ -136,6 +192,7 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
         preferencesDirty = false;
         preferencesLoaded = true;
         foreach (var property in new[] { nameof(SelectedGame), nameof(GameInstallationPath), nameof(AllowLaunchWithMissingDependencies), nameof(LaunchArguments), nameof(ModRoots), nameof(CloseAfterLaunch), nameof(WorkshopStartupRefresh), nameof(Theme), nameof(AllowMultipleInstances), nameof(CheckForUpdates), nameof(UpdateChannel), nameof(AutoSaveChanges) }) this.RaisePropertyChanged(property);
+        RefreshPresets();
     }
 
     private void OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
@@ -169,11 +226,81 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
         this.RaisePropertyChanged(nameof(AutoSaveChanges));
     }
 
+    private async Task LoadPresetsAsync()
+    {
+        presetsLoaded = true;
+        var catalog = await presetService.LoadAsync(CancellationToken.None);
+        SetPresets(catalog.Presets);
+        PresetDiagnostics = string.Join(Environment.NewLine, catalog.Diagnostics.Select(diagnostic => diagnostic.Message));
+        this.RaisePropertyChanged(nameof(PresetDiagnostics));
+    }
+
+    private void SetPresets(IReadOnlyList<LaunchArgumentPreset> presets)
+    {
+        LaunchArgumentPresets = presets.Select(preset => new LaunchArgumentPresetOptionViewModel(this, preset)).ToArray();
+        this.RaisePropertyChanged(nameof(LaunchArgumentPresets));
+        RefreshPresets();
+    }
+
+    private string[] ArgumentLines() => LaunchArguments.Split(["\r\n", "\n", "\r"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private void RefreshPresets()
+    {
+        var lines = ArgumentLines();
+        foreach (var option in LaunchArgumentPresets) option.Refresh(lines, SelectedGame);
+    }
+
+    private int PresetIndex(LaunchArgumentPreset preset) => LaunchArgumentPresets.Select(option => option.Preset.Id).ToList().IndexOf(preset.Id);
+
     public void Dispose()
     {
         if (disposed) return;
         disposed = true;
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CancelAutoSaveOwner(AutoSaveOwner);
+    }
+}
+
+public sealed class LaunchArgumentPresetOptionViewModel(DashboardViewModel owner, LaunchArgumentPreset preset) : ReactiveObject
+{
+    private bool isActive;
+    private string value = string.Empty;
+
+    public LaunchArgumentPreset Preset { get; } = preset;
+    public string FriendlyName => Preset.FriendlyName;
+    public string ArgumentTemplate => Preset.ArgumentTemplate;
+    public string Description => Preset.Description;
+    public bool RequiresValue => Preset.RequiresValue;
+    public bool IsImported => Preset.IsImported;
+    public bool IsAdvanced => Preset.IsAdvanced;
+    public bool IsApplicable { get; private set; }
+    public string Value
+    {
+        get => value;
+        set
+        {
+            if (this.value == value) return;
+            this.RaiseAndSetIfChanged(ref this.value, value);
+            if (isActive) owner.UpdatePresetValue(Preset, value);
+        }
+    }
+    public bool IsActive
+    {
+        get => isActive;
+        set
+        {
+            if (isActive == value) return;
+            owner.SetPresetActive(Preset, value, Value);
+            this.RaisePropertyChanged(nameof(IsActive));
+        }
+    }
+
+    internal void Refresh(IReadOnlyList<string> arguments, GameVariant game)
+    {
+        var matching = arguments.FirstOrDefault(Preset.Matches);
+        if (RequiresValue && matching is not null) Value = matching[ArgumentTemplate.Length..];
+        IsApplicable = Preset.AppliesTo(game);
+        this.RaiseAndSetIfChanged(ref isActive, matching is not null);
+        this.RaisePropertyChanged(nameof(IsApplicable));
     }
 }

@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" x:Class="AAML.Avalonia.MigrationView" x:DataType="local:MigrationViewModel" AutomationProperties.AutomationId="MigrationPage">
-  <Grid Margin="24,12,24,24" RowDefinitions="Auto,16,Auto,16,*">
+  <Grid Margin="24,12,24,24" RowDefinitions="Auto,16,Auto,16,Auto,16,*">
     <StackPanel>
       <TextBlock Classes="title" Text="Migration" />
       <TextBlock Classes="muted" Text="Rehearse legacy AML lists and snapshots before adopting them. Previewing never changes source or modern data." />
@@ -9,6 +9,26 @@
       <WrapPanel><Button Command="{Binding PreviewSnapshots}" Content="Choose legacy settings.json" /><Button Margin="8,0,0,0" Command="{Binding ApplySnapshots}" Content="Confirm snapshot import" /></WrapPanel>
       <WrapPanel><Button Command="{Binding PreviewOverrideCleanup}" Content="Preview obsolete overrides" /><Button Margin="8,0,0,0" Command="{Binding ApplyOverrideCleanup}" Content="Confirm cleanup" /></WrapPanel>
     </StackPanel>
-    <TextBox AutomationProperties.AutomationId="MigrationReport" Grid.Row="4" Text="{Binding Report}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+    <StackPanel Grid.Row="4" Spacing="8">
+      <TextBlock FontWeight="SemiBold" Text="Existing game mod roots" />
+      <TextBlock Classes="muted" Text="Preview is read-only. Select valid roots explicitly, then confirm to persist only those selections." TextWrapping="Wrap" />
+      <WrapPanel>
+        <Button AutomationProperties.AutomationId="MigrationPreviewModRootsButton" MinHeight="48" Command="{Binding PreviewModRoots}" Content="Preview ModRootDirs" />
+        <Button AutomationProperties.AutomationId="MigrationConfirmModRootsButton" MinHeight="48" Margin="8,0,0,0" Command="{Binding ApplyModRoots}" Content="Confirm selected roots" />
+      </WrapPanel>
+      <ItemsControl AutomationProperties.AutomationId="MigrationModRootList" ItemsSource="{Binding ModRootRows}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Grid MinHeight="48" ColumnDefinitions="Auto,120,*,*" ColumnSpacing="8">
+              <CheckBox MinWidth="48" MinHeight="48" IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanSelect}" />
+              <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Resolution}" />
+              <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{Binding Source}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="3" VerticalAlignment="Center" Text="{Binding ResolvedPath}" TextTrimming="CharacterEllipsis" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+    <TextBox AutomationProperties.AutomationId="MigrationReport" Grid.Row="6" Text="{Binding Report}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
   </Grid>
 </UserControl>

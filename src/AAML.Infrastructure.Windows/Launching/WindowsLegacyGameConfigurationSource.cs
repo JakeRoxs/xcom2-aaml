@@ -35,6 +35,30 @@ public sealed class WindowsLegacyGameConfigurationSource : ILegacyGameConfigurat
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return Result<IReadOnlyList<ActiveModSource>>.Failure(new Error("active_mods.read_failed", exception.Message, ErrorKind.Io)); }
     }
 
+    public async Task<Result<ExistingModRootPreview>> ReadModRootsAsync(GameVariant variant, string? installationLocation, IReadOnlyList<string> configuredRoots, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(installationLocation))
+            return Result<ExistingModRootPreview>.Failure(new Error("mod_roots.installation_required", "Configure the selected game installation before previewing existing roots.", ErrorKind.Validation));
+        var paths = Resolve(variant, installationLocation);
+        if (!paths.IsSuccess) return Result<ExistingModRootPreview>.Failure(paths.Error!);
+        try
+        {
+            var contents = File.Exists(paths.Value!.Engine) ? await File.ReadAllTextAsync(paths.Value.Engine, cancellationToken).ConfigureAwait(false) : string.Empty;
+            var installation = Path.GetFullPath(installationLocation);
+            var binary = Path.Combine(new[] { installation }.Concat(GameModRootPolicy.BinaryDirectoryComponents(variant)).ToArray());
+            var parsed = ExistingModRootIniParser.Parse(contents, StringComparer.OrdinalIgnoreCase);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var configured = configuredRoots.Select(TryFullPath).Where(path => path is not null).Cast<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var rows = parsed.Select((item, index) => Classify(index, item.Value, item.Line, installation, binary, seen, configured)).ToArray();
+            var fingerprint = Fingerprint(contents);
+            var behavior = $"Windows generated configuration: {paths.Value.Engine}; relative roots resolve against {binary}.";
+            return Result<ExistingModRootPreview>.Success(new(variant, installation, paths.Value.Engine, fingerprint, behavior, rows, BuildRootReport(variant, paths.Value.Engine, fingerprint, behavior, rows)));
+        }
+        catch (OperationCanceledException) { return Result<ExistingModRootPreview>.Failure(new Error("mod_roots.cancelled", "Mod-root preview was cancelled.", ErrorKind.Cancelled)); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or PathTooLongException)
+        { return Result<ExistingModRootPreview>.Failure(new Error("mod_roots.read_failed", exception.Message, ErrorKind.Io)); }
+    }
+
     public async Task<Result<ObsoleteOverridePreview>> PreviewOverrideCleanupAsync(GameVariant variant, CancellationToken cancellationToken)
     {
         var paths = Resolve(variant, null);
@@ -94,5 +118,50 @@ public sealed class WindowsLegacyGameConfigurationSource : ILegacyGameConfigurat
     }
 
     private static string Fingerprint(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static ExistingModRootRow Classify(int index, string? raw, int line, string installation, string binary, HashSet<string> seen, HashSet<string> configured)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return new(index, raw ?? string.Empty, null, line, ExistingModRootResolution.Malformed);
+        try
+        {
+            var value = raw.Trim();
+            if (value.Length >= 1 && (value[0] == '"' || value[^1] == '"'))
+            {
+                if (value.Length < 2 || value[0] != '"' || value[^1] != '"') return new(index, raw, null, line, ExistingModRootResolution.Malformed);
+                value = value[1..^1].Trim();
+            }
+            if (string.IsNullOrWhiteSpace(value) || value.IndexOf('\0') >= 0) return new(index, raw, null, line, ExistingModRootResolution.Malformed);
+            value = value.Replace('/', '\\').TrimEnd('\\');
+            var relative = !Path.IsPathRooted(value);
+            var resolved = Path.GetFullPath(relative ? Path.Combine(binary, value) : value);
+            if (relative && !IsContained(resolved, installation)) return new(index, raw, resolved, line, ExistingModRootResolution.OutsideRoot);
+            if (!seen.Add(resolved)) return new(index, raw, resolved, line, ExistingModRootResolution.Duplicate);
+            if (configured.Contains(resolved)) return new(index, raw, resolved, line, ExistingModRootResolution.AlreadyConfigured);
+            if (!Directory.Exists(resolved)) return new(index, raw, resolved, line, ExistingModRootResolution.Missing);
+            if (HasReparsePoint(resolved)) return new(index, raw, resolved, line, ExistingModRootResolution.Reparse);
+            return new(index, raw, resolved, line, ExistingModRootResolution.Valid);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        { return new(index, raw, null, line, ExistingModRootResolution.Malformed); }
+    }
+
+    private static bool IsContained(string candidate, string root)
+    {
+        var relative = Path.GetRelativePath(root, candidate);
+        return relative != ".." && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) && !Path.IsPathRooted(relative);
+    }
+
+    private static bool HasReparsePoint(string path)
+    {
+        for (var current = new DirectoryInfo(path); current is not null; current = current.Parent)
+            if (current.Exists && current.Attributes.HasFlag(FileAttributes.ReparsePoint)) return true;
+        return false;
+    }
+
+    private static string? TryFullPath(string path) { try { return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); } catch { return null; } }
+
+    private static string BuildRootReport(GameVariant variant, string path, string fingerprint, string behavior, IReadOnlyList<ExistingModRootRow> rows) =>
+        $"ModRootDirs migration preview\nVariant: {variant}\nSource: {path}\nSource preserved: yes\nSource SHA-256: {fingerprint}\nBehavior: {behavior}\n" +
+        (rows.Count == 0 ? "No ModRootDirs entries found." : string.Join('\n', rows.Select(row => $"{row.Index + 1}. line {row.LineNumber} | {row.Resolution} | {row.RawValue} | {row.ResolvedPath ?? "-"}")));
     private sealed record Paths(string GeneratedModOptions, string DefaultModOptions, string Engine);
 }

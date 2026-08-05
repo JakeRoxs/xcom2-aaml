@@ -1,0 +1,14 @@
+{
+  "DarkMode": true,
+  "CheckForUpdates": false,
+  "CheckForPreReleaseUpdates": false,
+  "IncludeAlphaVersions": true,
+  "CloseAfterLaunch": true,
+  "AllowMultipleInstances": true,
+  "UpdateModsOnStartup": true,
+  "OnlyUpdateEnabledOrNewModsOnStartup": true,
+  "ShowHiddenElements": true,
+  "ShowModListGroups": false,
+  "ArgumentList": ["-review", "-allowConsole"],
+  "QuickToggleArguments": ["-allowConsole", "-log", "-ALLOWCONSOLE"]
+}

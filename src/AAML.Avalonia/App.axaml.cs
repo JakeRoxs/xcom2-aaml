@@ -2,6 +2,7 @@ using global::Avalonia;
 using global::Avalonia.Controls;
 using global::Avalonia.Controls.ApplicationLifetimes;
 using global::Avalonia.Markup.Xaml;
+using global::Avalonia.Platform;
 using global::Avalonia.Automation;
 using global::Avalonia.VisualTree;
 using AAML.Application.Logging;
@@ -79,6 +80,7 @@ public sealed partial class App : global::Avalonia.Application
         services.AddSingleton<INotificationService>(new NotificationDialog(dialog));
         services.AddSingleton<IProfileDocumentTransfer>(_ => new AvaloniaProfileDocumentTransfer(() => (Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow));
         services.AddSingleton<IApplicationUiController, ApplicationUiController>();
+        services.AddSingleton<ILaunchArgumentPresetService, LaunchArgumentPresetService>();
         services.AddSingleton<ApplicationSession>();
 
         provider = services.BuildServiceProvider();
@@ -95,6 +97,7 @@ public sealed partial class App : global::Avalonia.Application
             desktop.MainWindow = new Window
             {
                 Title = "Avalonia Alternative Mod Launcher",
+                Icon = CreateWindowIcon(),
                 Width = 1180,
                 Height = 760,
                 MinWidth = 820,
@@ -123,6 +126,8 @@ public sealed partial class App : global::Avalonia.Application
         }
         base.OnFrameworkInitializationCompleted();
     }
+
+    internal static WindowIcon CreateWindowIcon() => new(AssetLoader.Open(new Uri("avares://AAML.Avalonia/Assets/aaml-icon.png")));
 
     private static void AssignShellNavigationAutomationIds(AamlShellView shellView)
     {
@@ -186,7 +191,7 @@ public sealed partial class App : global::Avalonia.Application
             var requestStore = new LinuxSteamLaunchRequestStore(paths.RuntimeDirectory);
             services.AddSingleton<ISteamLaunchRequestStore>(requestStore);
             services.AddSingleton<IGameConfigurationWriter, LinuxGameConfigurationWriter>();
-            services.AddSingleton<ILegacyGameConfigurationSource, UnavailableLegacyGameConfigurationSource>();
+            services.AddSingleton<ILegacyGameConfigurationSource, LinuxLegacyGameConfigurationSource>();
             services.AddSingleton<IExternalLauncher, LinuxExternalLauncher>();
             services.AddSingleton<IGameLogLocator, UnavailableGameLogLocator>();
             services.AddSingleton<IGameLauncher>(_ => new LinuxSteamGameLauncher(requestStore));
@@ -199,10 +204,13 @@ public sealed partial class App : global::Avalonia.Application
         services.AddSingleton<IApplicationPaths>(paths);
         services.AddSingleton<IPathSemantics>(semantics);
         services.AddSingleton<ISettingsRepository, JsonSettingsRepository>();
+        services.AddSingleton<ILegacyLaunchArgumentSuggestionRepository>(_ => new LegacyLaunchArgumentSuggestionRepository(
+            Path.Combine(paths.ConfigurationDirectory, "legacy-migration-v1.json")));
         services.AddSingleton<IAtomicTextWriter, AtomicTextWriter>();
         services.AddSingleton<ILegacySettingsImporter>(_ => new LegacySettingsFileImporter(
             [Path.Combine(AppContext.BaseDirectory, "settings.json")],
-            (_, path) => new WindowsPathSemantics().NormalizeIdentity(path)));
+            (_, path) => new WindowsPathSemantics().NormalizeIdentity(path),
+            Path.Combine(paths.ConfigurationDirectory, "legacy-migration-v1.json")));
         services.AddSingleton<ISettingsBootstrapper, SettingsBootstrapper>();
         services.AddSingleton<ISteamSettingsIntegrator, SteamSettingsIntegrator>();
         services.AddSingleton<IModCatalogSource, FilesystemModCatalogSource>();
@@ -223,6 +231,8 @@ public sealed partial class App : global::Avalonia.Application
         services.AddSingleton<IConfigurationSnapshotRepository, JsonConfigurationSnapshotRepository>();
         services.AddSingleton<ILegacySnapshotMigrationService, LegacySnapshotMigrationService>();
         services.AddSingleton<IActiveModImportService, ActiveModImportService>();
+        services.AddSingleton<IExistingModRootAdoptionService, ExistingModRootAdoptionService>();
+        services.AddSingleton<IExistingModRootPreviewGuard, ExistingModRootPreviewGuard>();
         services.AddSingleton<ILineDiffService, MyersLineDiffService>();
         services.AddSingleton<IProfileRepository, JsonProfileRepository>();
         services.AddSingleton<IProfileService, ProfileService>();

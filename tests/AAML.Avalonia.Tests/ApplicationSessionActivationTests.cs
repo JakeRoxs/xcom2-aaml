@@ -20,6 +20,7 @@ using AAML.Domain.Profiles;
 using FluentAssertions;
 using Moq;
 using Reactive.Bindings;
+using System.Reactive.Linq;
 using Zafiro.UI.Navigation.Sections;
 using Zafiro.UI.Shell;
 
@@ -29,6 +30,20 @@ namespace AAML.Avalonia.Tests;
 [DoNotParallelize]
 public sealed class ApplicationSessionActivationTests
 {
+    [TestMethod]
+    public async Task ApplyConfiguration_BlocksUnconfirmedExistingRootPreviewBeforeWriting()
+    {
+        var fixture = new SessionFixture();
+        fixture.ReleaseDiscovery();
+        (await fixture.Session.InitializeAsync(TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
+        fixture.RootGuard.Register(new ExistingModRootPreview(GameVariant.XCom2WarOfTheChosen, "C:\\Game", "XComEngine.ini", "hash", "Windows", [new(0, "missing", null, 1, ExistingModRootResolution.Missing)], "report"));
+
+        var result = await fixture.Session.ApplyConfigurationAsync(TestContext.CancellationToken);
+
+        result.Error!.Code.Should().Be("mod_roots.preview_unconfirmed");
+        fixture.Session.Status.Should().Contain("Migration");
+    }
+
     [TestMethod]
     public async Task DraftCheckboxAndBulkActivation_ProfileCapturesVisibleMembershipAndOrderWithoutSavingSettings()
     {
@@ -157,7 +172,7 @@ public sealed class ApplicationSessionActivationTests
         var fixture = new SessionFixture(autoSave: true);
         await fixture.Session.InitializeAsync(TestContext.CancellationToken);
         var ui = new Mock<IApplicationUiController>();
-        using var viewModel = new DashboardViewModel(fixture.Session, ui.Object);
+        using var viewModel = new DashboardViewModel(fixture.Session, ui.Object, PresetService());
         viewModel.Activate();
 
         viewModel.LaunchArguments = "-review";
@@ -328,7 +343,7 @@ public sealed class ApplicationSessionActivationTests
     {
         var fixture = new SessionFixture();
         await fixture.Session.InitializeAsync(TestContext.CancellationToken);
-        using var viewModel = new DashboardViewModel(fixture.Session, Mock.Of<IApplicationUiController>());
+        using var viewModel = new DashboardViewModel(fixture.Session, Mock.Of<IApplicationUiController>(), PresetService());
         viewModel.Activate();
 
         viewModel.AutoSaveChanges = true;
@@ -336,6 +351,109 @@ public sealed class ApplicationSessionActivationTests
         await WaitUntilAsync(() => fixture.AutoSavePreferenceSaved == true);
         fixture.Session.Settings!.AutoSaveChanges.Should().BeTrue();
         viewModel.AutoSaveChanges.Should().BeTrue();
+    }
+
+    private static ILaunchArgumentPresetService PresetService()
+    {
+        var repository = new Mock<ILegacyLaunchArgumentSuggestionRepository>();
+        repository.Setup(port => port.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegacyLaunchArgumentSuggestionReadResult(null, []));
+        return new LaunchArgumentPresetService(repository.Object);
+    }
+
+    [TestMethod]
+    public async Task PresetToggles_PreserveFreeformArgumentsAndUseCatalogOrderWithValuedArguments()
+    {
+        var fixture = new SessionFixture();
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        using var viewModel = new DashboardViewModel(fixture.Session, Mock.Of<IApplicationUiController>(), PresetService());
+        viewModel.LaunchArguments = "-freeform";
+        var regenerate = viewModel.LaunchArgumentPresets.Single(option => option.Preset.Id == "regenerate-inis");
+        var log = viewModel.LaunchArgumentPresets.Single(option => option.Preset.Id == "log");
+        var language = viewModel.LaunchArgumentPresets.Single(option => option.Preset.Id == "language");
+
+        regenerate.IsActive = true;
+        log.IsActive = true;
+        language.Value = "fr";
+        language.IsActive = true;
+
+        viewModel.LaunchArguments.Split(Environment.NewLine).Should().Equal("-freeform", "-log", "-language=fr", "-regenerateinis");
+        language.Value = "de";
+        viewModel.LaunchArguments.Split(Environment.NewLine).Should().Equal("-freeform", "-log", "-language=de", "-regenerateinis");
+        language.IsActive = false;
+        viewModel.LaunchArguments.Split(Environment.NewLine).Should().Equal("-freeform", "-log", "-regenerateinis");
+    }
+
+    [TestMethod]
+    public async Task ChallengeMode_DoesNotOfferOrApplyConsolePreset()
+    {
+        var fixture = new SessionFixture();
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        using var viewModel = new DashboardViewModel(fixture.Session, Mock.Of<IApplicationUiController>(), PresetService());
+        viewModel.LaunchArguments = "-freeform";
+        viewModel.SelectedGame = GameVariant.XCom2WarOfTheChosenChallengeMode;
+        var console = viewModel.LaunchArgumentPresets.Single(option => option.Preset.Id == "allow-console");
+
+        console.IsApplicable.Should().BeFalse();
+        console.IsActive = true;
+
+        viewModel.LaunchArguments.Should().Be("-freeform");
+        console.IsActive.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public async Task ExistingEquivalentArgument_IsActiveRemovableAndNeverDuplicatedByPreset()
+    {
+        var fixture = new SessionFixture();
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        using var viewModel = new DashboardViewModel(fixture.Session, Mock.Of<IApplicationUiController>(), PresetService());
+        viewModel.LaunchArguments = "-LOG\n-noRedscreens\n-unrelated";
+        var log = viewModel.LaunchArgumentPresets.Single(option => option.Preset.Id == "log");
+
+        log.IsActive.Should().BeTrue();
+        log.IsActive = true;
+        log.IsActive = false;
+
+        viewModel.LaunchArguments.Split(Environment.NewLine).Should().Equal("-noRedscreens", "-unrelated");
+    }
+
+    [TestMethod]
+    public async Task ExistingPresetLines_ParticipateInCatalogOrderingAfterRestart()
+    {
+        var fixture = new SessionFixture();
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        using var viewModel = new DashboardViewModel(fixture.Session, Mock.Of<IApplicationUiController>(), PresetService());
+        viewModel.LaunchArguments = "-freeform\n-regenerateinis";
+
+        viewModel.LaunchArgumentPresets.Single(option => option.Preset.Id == "log").IsActive = true;
+
+        viewModel.LaunchArguments.Split(Environment.NewLine).Should().Equal("-freeform", "-log", "-regenerateinis");
+    }
+
+    [TestMethod]
+    public async Task PresetDraft_UsesAutoSaveManualSaveAndDiscardSemantics()
+    {
+        var automatic = new SessionFixture(autoSave: true);
+        await automatic.Session.InitializeAsync(TestContext.CancellationToken);
+        using (var viewModel = new DashboardViewModel(automatic.Session, Mock.Of<IApplicationUiController>(), PresetService()))
+        {
+            viewModel.Activate();
+            viewModel.LaunchArgumentPresets.Single(option => option.Preset.Id == "log").IsActive = true;
+            await WaitUntilAsync(() => automatic.PreferencesSaveCount == 1);
+            automatic.PreferencesSaved!.LaunchArguments.Select(argument => argument.Value).Should().Contain("-log");
+        }
+
+        var manual = new SessionFixture();
+        await manual.Session.InitializeAsync(TestContext.CancellationToken);
+        using var manualViewModel = new DashboardViewModel(manual.Session, Mock.Of<IApplicationUiController>(), PresetService());
+        manualViewModel.Activate();
+        manualViewModel.LaunchArgumentPresets.Single(option => option.Preset.Id == "log").IsActive = true;
+        manual.PreferencesSaveCount.Should().Be(0);
+        (await manualViewModel.SavePreferences.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+        manual.PreferencesSaved!.LaunchArguments.Select(argument => argument.Value).Should().Contain("-log");
+        manualViewModel.LaunchArgumentPresets.Single(option => option.Preset.Id == "regenerate-inis").IsActive = true;
+        (await manualViewModel.DiscardPreferences.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+        manualViewModel.LaunchArguments.Should().NotContain("-regenerateinis");
     }
 
     [TestMethod]
@@ -545,6 +663,7 @@ public sealed class ApplicationSessionActivationTests
             workshopOperations.Setup(service => service.RefreshAsync(It.IsAny<IReadOnlyList<ModInstallation>>(), It.IsAny<IProgress<WorkshopOperationProgress>?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new WorkshopBatchResult([]));
             WorkshopOperations = workshopOperations;
+            RootGuard = new ExistingModRootPreviewGuard();
 
             var services = new Dictionary<Type, object>
             {
@@ -554,7 +673,8 @@ public sealed class ApplicationSessionActivationTests
                 [typeof(IModConflictService)] = conflicts.Object, [typeof(IConfigurationDocumentCatalog)] = documents.Object,
                 [typeof(IModDuplicateAnalyzer)] = new ModDuplicateAnalyzer(), [typeof(IApplicationDiagnostics)] = diagnostics.Object,
                 [typeof(IWorkshopService)] = workshop.Object, [typeof(IWorkshopPreviewCache)] = previewCache.Object,
-                [typeof(IWorkshopOperationCoordinator)] = workshopOperations.Object
+                [typeof(IWorkshopOperationCoordinator)] = workshopOperations.Object,
+                [typeof(IExistingModRootPreviewGuard)] = RootGuard
             };
             var constructor = typeof(ApplicationSession).GetConstructors().Single();
             Session = (ApplicationSession)constructor.Invoke(constructor.GetParameters().Select(parameter => services.GetValueOrDefault(parameter.ParameterType) ?? MockObject(parameter.ParameterType)).ToArray());
@@ -568,6 +688,7 @@ public sealed class ApplicationSessionActivationTests
         public ModInstallation Second { get; }
         public RecordingSettingsRepository SettingsRepository { get; }
         public Mock<IWorkshopOperationCoordinator> WorkshopOperations { get; }
+        public ExistingModRootPreviewGuard RootGuard { get; }
         public ModProfile? CreatedProfile { get; private set; }
         public GameLaunchRequest? LaunchRequest { get; private set; }
         public ApplicationSettings? NavigationRailSaved { get; private set; }

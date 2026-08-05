@@ -8,12 +8,12 @@ public sealed class AutomationSemanticContractTests
 {
     private static readonly IReadOnlyDictionary<string, string[]> RequiredIds = new Dictionary<string, string[]>
     {
-        ["DashboardView.axaml"] = ["DashboardPage", "DashboardGamePathTextBox", "DashboardLaunchArgumentsTextBox", "DashboardWorkshopPolicyCombo", "DashboardAutoSaveToggle", "DashboardDetectSteamButton", "DashboardSavePreferencesButton", "DashboardLaunchButton", "DashboardStatus"],
+        ["DashboardView.axaml"] = ["DashboardPage", "DashboardGamePathTextBox", "DashboardLaunchArgumentsTextBox", "DashboardLaunchPresetPicker", "DashboardLaunchPresetDiagnostics", "DashboardWorkshopPolicyCombo", "DashboardAutoSaveToggle", "DashboardDetectSteamButton", "DashboardSavePreferencesButton", "DashboardLaunchButton", "DashboardStatus"],
         ["ModsView.axaml"] = ["ModsPage", "ModsRefreshButton", "ModsSearchTextBox", "ModsGrid", "ModsActiveCheckBox", "ModsDangerZone", "ModsStatus"],
         ["ConflictsView.axaml"] = ["ConflictsPage", "ConflictsRefreshButton", "ConflictsSearchTextBox", "ConflictsStatus"],
         ["ConfigurationsView.axaml"] = ["ConfigurationsPage", "ConfigurationsOpenButton", "ConfigurationsEditor", "ConfigurationsRefreshButton", "ConfigurationsStatus"],
         ["ProfilesView.axaml"] = ["ProfilesPage", "ProfilesNameTextBox", "ProfilesCreateButton", "ProfilesApplyButton", "ProfilesConfirmLegacyButton", "ProfilesStatus"],
-        ["MigrationView.axaml"] = ["MigrationPage", "MigrationPreviewActiveModsButton", "MigrationConfirmActiveModsButton", "MigrationReport"],
+        ["MigrationView.axaml"] = ["MigrationPage", "MigrationPreviewActiveModsButton", "MigrationConfirmActiveModsButton", "MigrationPreviewModRootsButton", "MigrationConfirmModRootsButton", "MigrationModRootList", "MigrationReport"],
         ["SupportView.axaml"] = ["SupportPage", "SupportCheckUpdatesButton", "SupportCopyReportButton", "SupportUpdateStatus"],
         ["ModCleanupView.axaml"] = ["CleanupPage", "CleanupPreviewButton", "CleanupConfirmButton", "CleanupReport"]
     };
@@ -85,6 +85,18 @@ public sealed class AutomationSemanticContractTests
         documents["DashboardView.axaml"].Descendants().Single(element => Id(element) == "DashboardAutoSaveToggle")
             .Attribute("Content")!.Value.Should().Be("Auto-save changes");
         documents["ModsView.axaml"].Descendants().Select(Id).Should().NotContain("DashboardAutoSaveToggle");
+    }
+
+    [TestMethod]
+    public void DashboardPresetPickerIsCollapsedAndUsesTouchSizedRowsWithoutAButtonWall()
+    {
+        var document = LoadViews()["DashboardView.axaml"];
+        var picker = document.Descendants().Single(element => Id(element) == "DashboardLaunchPresetPicker");
+
+        picker.Attribute("IsExpanded")!.Value.Should().Be("False");
+        picker.Descendants().Where(element => element.Name.LocalName == "Grid" && (string?)element.Attribute("MinHeight") == "48").Should().NotBeEmpty();
+        picker.Descendants().Where(element => element.Name.LocalName == "CheckBox").Should().OnlyContain(element => (string?)element.Attribute("MinHeight") == "48");
+        picker.Descendants().Should().NotContain(element => element.Name.LocalName == "Button");
     }
 
     private static Dictionary<string, XDocument> LoadViews()

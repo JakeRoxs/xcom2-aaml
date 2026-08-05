@@ -34,7 +34,7 @@ internal static class FatalErrorCoordinator
             var issue = new Button { Content = "Report issue" }; issue.Click += async (_, _) => await launcher!.OpenUriAsync(ProjectIdentity.IssuesUri, CancellationToken.None);
             var close = new Button { Content = "Close AAML" }; close.Click += (_, _) => ui!.Shutdown(1);
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { copy, logs, issue, close } };
-            var window = new Window { Title = "AAML stopped unexpectedly", Width = 760, Height = 560, Content = new StackPanel { Margin = new global::Avalonia.Thickness(20), Spacing = 12, Children = { new TextBlock { Text = "An unexpected error prevented AAML from continuing.", FontSize = 20, FontWeight = global::Avalonia.Media.FontWeight.SemiBold }, status, new TextBox { Text = report, IsReadOnly = true, AcceptsReturn = true, Height = 390 }, buttons } } };
+            var window = new Window { Title = "AAML stopped unexpectedly", Icon = App.CreateWindowIcon(), Width = 760, Height = 560, Content = new StackPanel { Margin = new global::Avalonia.Thickness(20), Spacing = 12, Children = { new TextBlock { Text = "An unexpected error prevented AAML from continuing.", FontSize = 20, FontWeight = global::Avalonia.Media.FontWeight.SemiBold }, status, new TextBox { Text = report, IsReadOnly = true, AcceptsReturn = true, Height = 390 }, buttons } } };
             window.Closed += (_, _) => ui!.Shutdown(1); window.Show();
         }
         catch { Console.Error.WriteLine(report); ui?.Shutdown(1); }

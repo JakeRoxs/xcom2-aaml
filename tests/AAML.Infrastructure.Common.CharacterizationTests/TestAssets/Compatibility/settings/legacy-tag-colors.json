@@ -1,0 +1,9 @@
+{
+  "Tags": {
+    "named": { "Label": "Named", "Color": "Red" },
+    "rgb": { "Label": "RGB", "Color": "17, 34, 51" },
+    "argb": { "Label": "ARGB", "Color": "128, 17, 34, 51" },
+    "invalid": { "Label": "Invalid", "Color": "not-a-known-color" },
+    "wrong-type": { "Label": "Wrong Type", "Color": { "R": 17, "G": 34, "B": 51 } }
+  }
+}

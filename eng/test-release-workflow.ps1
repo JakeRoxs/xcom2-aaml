@@ -24,6 +24,7 @@ Assert-Match $workflow 'permissions:\s*\r?\n\s+contents:\s*read\s*\r?\n\s+id-tok
 Assert-Match $workflow 'actions/attest-build-provenance@' 'Final archives must receive build provenance attestations.'
 Assert-Match $workflow '-OfficialRelease' 'Both final artifacts must run official validation.'
 Assert-Match $workflow 'test-aaml-archive\.ps1' 'Final archives must be extracted and revalidated.'
+Assert-Match $workflow 'test-brand-assets\.ps1' 'Release staging must verify deterministic first-party brand assets.'
 Assert-Match $policy '"requiredForPublicRelease"\s*:\s*false' 'Windows signing policy must explicitly permit unsigned public releases.'
 Assert-Match $policy '"status"\s*:\s*"not-required"' 'Windows signing policy must be not-required.'
 Assert-NotMatch $validator 'Get-AuthenticodeSignature' 'Official validation must not require Authenticode.'

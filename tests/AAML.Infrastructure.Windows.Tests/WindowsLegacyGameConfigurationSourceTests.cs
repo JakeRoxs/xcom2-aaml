@@ -10,6 +10,68 @@ namespace AAML.Infrastructure.Windows.Tests;
 public sealed class WindowsLegacyGameConfigurationSourceTests
 {
     [TestMethod]
+    public async Task ModRoots_UseExactVariantPathsResolveRelativeAndClassifyWithoutWritingSource()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "AAML Root Preview", Guid.NewGuid().ToString("N"));
+        var documents = Path.Combine(root, "Documents");
+        try
+        {
+            foreach (var variant in new[] { GameVariant.XCom2, GameVariant.XCom2WarOfTheChosen, GameVariant.ChimeraSquad })
+            {
+                var installation = Path.Combine(root, variant.ToString());
+                var binary = Path.Combine(new[] { installation }.Concat(GameModRootPolicy.BinaryDirectoryComponents(variant)).ToArray());
+                var relativeRoot = Path.Combine(binary, "Relative Mods");
+                var absoluteRoot = Path.Combine(root, "Absolute Mods", variant.ToString());
+                Directory.CreateDirectory(relativeRoot); Directory.CreateDirectory(absoluteRoot);
+                var config = Path.Combine(documents, "My Games", GameModRootPolicy.WindowsDocumentsFolder(variant), "XComGame", "Config");
+                Directory.CreateDirectory(config);
+                var engine = Path.Combine(config, "XComEngine.ini");
+                var removedRoot = Path.Combine(root, "Removed");
+                var original = $"[Engine.DownloadableContentEnumerator]\r\n!ModRootDirs=ClearArray\r\n+ModRootDirs={removedRoot}\r\n-ModRootDirs=\"{removedRoot}\"\r\n+ModRootDirs=\"Relative Mods\\\"\r\nModRootDirs={absoluteRoot}\r\n.ModRootDirs={absoluteRoot}\r\nModRootDirs={Path.Combine(root, "Missing")}\r\nModRootDirs=..\\..\\..\\..\\..\\Outside\r\nModRootDirs=\"unterminated\r\nModRootDirs\r\n[Other]\r\nModRootDirs=ignored\r\n";
+                await File.WriteAllTextAsync(engine, original, TestContext.CancellationToken);
+                var service = new WindowsLegacyGameConfigurationSource(new AtomicTextWriter(), documents);
+
+                var preview = await service.ReadModRootsAsync(variant, installation, [absoluteRoot], TestContext.CancellationToken);
+
+                preview.IsSuccess.Should().BeTrue(preview.Error?.Message);
+                preview.Value!.SourcePath.Should().Be(engine);
+                preview.Value.Rows.Select(row => row.Resolution).Should().Equal(
+                    ExistingModRootResolution.Valid,
+                    ExistingModRootResolution.AlreadyConfigured,
+                    ExistingModRootResolution.Duplicate,
+                    ExistingModRootResolution.Missing,
+                    ExistingModRootResolution.OutsideRoot,
+                    ExistingModRootResolution.Malformed,
+                    ExistingModRootResolution.Malformed);
+                preview.Value.Rows[0].ResolvedPath.Should().Be(Path.GetFullPath(relativeRoot));
+                (await File.ReadAllTextAsync(engine, TestContext.CancellationToken)).Should().Be(original);
+            }
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task ModRoots_ClassifyReparseDirectoryWhenSymbolicLinksAreAvailable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "AAML Root Link", Guid.NewGuid().ToString("N"));
+        var documents = Path.Combine(root, "Documents"); var installation = Path.Combine(root, "Game");
+        var target = Path.Combine(root, "Target"); var link = Path.Combine(root, "Link");
+        try
+        {
+            Directory.CreateDirectory(target); Directory.CreateDirectory(installation);
+            try { Directory.CreateSymbolicLink(link, target); }
+            catch (Exception exception) when (exception is UnauthorizedAccessException or IOException) { Assert.Inconclusive($"Symbolic links unavailable: {exception.Message}"); return; }
+            var config = Path.Combine(documents, "My Games", "XCOM2", "XComGame", "Config"); Directory.CreateDirectory(config);
+            await File.WriteAllTextAsync(Path.Combine(config, "XComEngine.ini"), $"[Engine.DownloadableContentEnumerator]\nModRootDirs={link}\n", TestContext.CancellationToken);
+
+            var preview = await new WindowsLegacyGameConfigurationSource(new AtomicTextWriter(), documents).ReadModRootsAsync(GameVariant.XCom2, installation, [], TestContext.CancellationToken);
+
+            preview.Value!.Rows.Single().Resolution.Should().Be(ExistingModRootResolution.Reparse);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
     public async Task ActiveMods_ReadsGeneratedBeforeDefaultAndCleanupIsPreviewedBackupSafeAndIdempotent()
     {
         var root = Path.Combine(Path.GetTempPath(), "AAML Legacy Config", Guid.NewGuid().ToString("N"));

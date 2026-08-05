@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "source": "assets/branding/aaml-icon.svg",
+  "generator": "eng/generate-brand-assets.ps1",
+  "files": {
+    "aaml-icon.svg": {
+      "sha256": "fbb7e2dd3b2845bff52e9770ac1ec895e1e38f73e47a44cbc18490b035f78808",
+      "kind": "source",
+      "scalable": true
+    },
+    "aaml.ico": {
+      "sha256": "617bdcf820d4bee08280629ddcffe21d70f5d1482c0caf247083c8b983e36141",
+      "kind": "windows-icon",
+      "frames": [
+        16,
+        20,
+        24,
+        32,
+        40,
+        48,
+        64,
+        128,
+        256
+      ]
+    },
+    "png/aaml-16.png": {
+      "sha256": "3ed990c088636647fb5b2abac8e21de18737b2d8d23502a65580d9a95303bccb",
+      "kind": "png",
+      "width": 16,
+      "height": 16
+    },
+    "png/aaml-32.png": {
+      "sha256": "13494899c1758a0b0230fd2137c523d075c94f28211890e5f09d86694696de23",
+      "kind": "png",
+      "width": 32,
+      "height": 32
+    },
+    "png/aaml-48.png": {
+      "sha256": "115aa255870c8c17662444b67571a7d8d07e22b5240fa1602d4ec1e984aaa157",
+      "kind": "png",
+      "width": 48,
+      "height": 48
+    },
+    "png/aaml-64.png": {
+      "sha256": "8f723375ebbb4079c74bba31df6051a7672b4d455995843d2e9d9c5891104020",
+      "kind": "png",
+      "width": 64,
+      "height": 64
+    },
+    "png/aaml-128.png": {
+      "sha256": "34a700acfec4a51afa35f8a08a4f55b804febcace89b68758d4866302648bf16",
+      "kind": "png",
+      "width": 128,
+      "height": 128
+    },
+    "png/aaml-256.png": {
+      "sha256": "1e08f0032d30fe285957cd7f2e65395a5792f2e9cfc56511c519b61d14ac30bb",
+      "kind": "png",
+      "width": 256,
+      "height": 256
+    },
+    "png/aaml-512.png": {
+      "sha256": "0557a0e4d72b61dfc89be17788c9c3d7f37524e1c779bad502fa69b159a31163",
+      "kind": "png",
+      "width": 512,
+      "height": 512
+    }
+  }
+}

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title description">
+  <title id="title">AAML mod stack launcher icon</title>
+  <desc id="description">Three cyan mod cartridges converge into an amber launch arrow on a dark rounded field.</desc>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="#334155"/>
+  <rect x="16" y="16" width="224" height="224" rx="46" fill="#111827"/>
+  <g fill="none" stroke="#2dd4bf" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M121 76H139L158 128"/>
+    <path d="M121 128H158"/>
+    <path d="M121 180H139L158 128"/>
+  </g>
+  <circle cx="158" cy="128" r="17" fill="#5eead4"/>
+  <g>
+    <rect x="36" y="56" width="94" height="40" rx="12" fill="#22d3ee"/>
+    <rect x="36" y="108" width="94" height="40" rx="12" fill="#5eead4"/>
+    <rect x="36" y="160" width="94" height="40" rx="12" fill="#38bdf8"/>
+    <g fill="#0f2533">
+      <rect x="48" y="69" width="49" height="14" rx="7"/>
+      <rect x="48" y="121" width="49" height="14" rx="7"/>
+      <rect x="48" y="173" width="49" height="14" rx="7"/>
+    </g>
+  </g>
+  <path d="M146 80L224 128L146 176Z" fill="#fb923c"/>
+  <path d="M169 107L204 128L169 149Z" fill="#fef3c7"/>
+</svg>

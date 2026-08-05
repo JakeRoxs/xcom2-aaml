@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.jakeroxs.xcom2_aaml</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Avalonia Alternative Mod Launcher</name>
+  <summary>Organize and launch modded XCOM 2 installations</summary>
+  <developer id="io.github.jakeroxs">
+    <name>AAML project</name>
+  </developer>
+  <description>
+    <p>AAML manages mod activation, order, profiles, conflicts, and launch configuration for supported XCOM 2 installations.</p>
+  </description>
+  <launchable type="desktop-id">io.github.jakeroxs.xcom2_aaml.desktop</launchable>
+  <provides>
+    <binary>AAML.Avalonia</binary>
+  </provides>
+  <url type="homepage">https://github.com/JakeRoxs/xcom2-aaml</url>
+  <content_rating type="oars-1.1" />
+</component>

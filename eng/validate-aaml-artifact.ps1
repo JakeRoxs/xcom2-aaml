@@ -26,7 +26,24 @@ foreach ($relative in $manifest.required) {
     }
 }
 
+$brandingDirectory = Join-Path $ArtifactDirectory 'branding'
+$brandProvenance = Get-Content -LiteralPath (Join-Path $brandingDirectory 'provenance.json') -Raw | ConvertFrom-Json
+$brandManifest = Get-Content -LiteralPath (Join-Path $brandingDirectory 'asset-manifest.json') -Raw | ConvertFrom-Json
+$brandSource = Join-Path $brandingDirectory 'aaml-icon.svg'
+if ($brandProvenance.repository -ne 'https://github.com/JakeRoxs/xcom2-aaml' -or
+    $brandProvenance.canonicalSource -ne 'assets/branding/aaml-icon.svg' -or
+    $brandProvenance.generator -ne 'eng/generate-brand-assets.ps1' -or
+    $brandProvenance.license -ne 'GPL-3.0-only' -or
+    $brandProvenance.declaration -notmatch 'without copying or tracing' -or
+    @($brandProvenance.externalAssets).Count -ne 0 -or
+    @($brandProvenance.legacyAssets).Count -ne 0) { throw 'Packaged brand provenance is not AAML-owned and self-contained.' }
+if ((Get-FileHash -LiteralPath $brandSource -Algorithm SHA256).Hash -ne $brandManifest.files.'aaml-icon.svg'.sha256) { throw 'Packaged scalable brand source differs from its generated asset manifest.' }
+$brandSvg = Get-Content -LiteralPath $brandSource -Raw
+if ($brandSvg -match '<(?:image|text|use)\b|(?:href|font-family|url)\s*=') { throw 'Packaged brand source contains non-geometric or external content.' }
+
 $files = @(Get-ChildItem -LiteralPath $ArtifactDirectory -File -Force -Recurse)
+$forbiddenBrandNames = @($files | Where-Object { $_.Extension -match '^\.(?:ico|png|svg|jpg|jpeg|webp)$' -and $_.Name -match '(?i)^(?:xcom|firaxis|wotc|legacy.?aml)' })
+if ($forbiddenBrandNames.Count -ne 0) { throw "Forbidden legacy/game artwork is present: $($forbiddenBrandNames.Name -join ', ')" }
 $leafNames = $files.Name
 foreach ($native in $manifest.forbiddenNative) {
     if ($leafNames -contains $native) { throw "Forbidden native asset is present: $native" }
@@ -124,6 +141,46 @@ if ($manifest.executableFormat -eq 'elf' -and $hex -ne '7F454C46') { throw 'Linu
 if ($manifest.rid -eq 'linux-x64' -and -not $IsWindows) {
     $mode = [System.IO.File]::GetUnixFileMode($executable)
     if (($mode -band [System.IO.UnixFileMode]::UserExecute) -eq 0) { throw 'Linux executable permission is missing.' }
+}
+
+if ($manifest.rid -eq 'win-x64') {
+    $icoPath = Join-Path $brandingDirectory 'aaml.ico'
+    if ((Get-FileHash -LiteralPath $icoPath -Algorithm SHA256).Hash -ne $brandManifest.files.'aaml.ico'.sha256) { throw 'Packaged Windows ICO differs from its generated asset manifest.' }
+    $icoBytes = [System.IO.File]::ReadAllBytes($icoPath)
+    $icoReader = [System.IO.BinaryReader]::new([System.IO.MemoryStream]::new($icoBytes))
+    try {
+        if ($icoReader.ReadUInt16() -ne 0 -or $icoReader.ReadUInt16() -ne 1 -or $icoReader.ReadUInt16() -ne 9) { throw 'Packaged Windows ICO directory is invalid.' }
+        $frames = @()
+        for ($index = 0; $index -lt 9; $index++) {
+            $width = $icoReader.ReadByte(); $null = $icoReader.ReadBytes(15)
+            $frames += if ($width -eq 0) { 256 } else { [int]$width }
+        }
+        if (Compare-Object @(16, 20, 24, 32, 40, 48, 64, 128, 256) $frames) { throw 'Packaged Windows ICO frame sizes are incomplete.' }
+    }
+    finally { $icoReader.Dispose() }
+    if ($IsWindows) {
+        Add-Type -AssemblyName System.Drawing
+        $associatedIcon = [System.Drawing.Icon]::ExtractAssociatedIcon($executable)
+        if ($null -eq $associatedIcon) { throw 'Windows executable has no extractable application icon metadata.' }
+        $associatedIcon.Dispose()
+    }
+} else {
+    $desktopId = 'io.github.jakeroxs.xcom2_aaml'
+    $desktop = Get-Content -LiteralPath (Join-Path $ArtifactDirectory "share/applications/$desktopId.desktop") -Raw
+    [xml]$appstream = Get-Content -LiteralPath (Join-Path $ArtifactDirectory "share/metainfo/$desktopId.metainfo.xml") -Raw
+    if ($desktop -notmatch "(?m)^Icon=$desktopId`$" -or $desktop -notmatch '(?m)^Exec=AAML\.Avalonia$') { throw 'Packaged Linux desktop references are invalid.' }
+    if ($appstream.component.id -ne $desktopId -or $appstream.component.launchable.'#text' -ne "$desktopId.desktop") { throw 'Packaged AppStream references are invalid.' }
+    foreach ($size in @(16, 32, 48, 64, 128, 256, 512)) {
+        $iconPath = Join-Path $ArtifactDirectory "share/icons/hicolor/${size}x$size/apps/$desktopId.png"
+        $expected = $brandManifest.files."png/aaml-$size.png".sha256
+        if ((Get-FileHash -LiteralPath $iconPath -Algorithm SHA256).Hash -ne $expected) { throw "Packaged Linux $size px icon differs from its generated asset manifest." }
+        $png = [System.IO.File]::ReadAllBytes($iconPath)
+        $width = $png[16] * 16777216 + $png[17] * 65536 + $png[18] * 256 + $png[19]
+        $height = $png[20] * 16777216 + $png[21] * 65536 + $png[22] * 256 + $png[23]
+        if ($width -ne $size -or $height -ne $size) { throw "Packaged Linux icon has invalid dimensions: $iconPath" }
+    }
+    $scalable = Join-Path $ArtifactDirectory "share/icons/hicolor/scalable/apps/$desktopId.svg"
+    if ((Get-FileHash -LiteralPath $scalable -Algorithm SHA256).Hash -ne $brandManifest.files.'aaml-icon.svg'.sha256) { throw 'Packaged Linux scalable icon differs from canonical source.' }
 }
 
 $steamManifestPath = Join-Path $ArtifactDirectory 'steamworks-manifest.json'

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Avalonia Alternative Mod Launcher
+GenericName=Game Mod Manager
+Comment=Organize and launch modded XCOM 2 installations
+Exec=AAML.Avalonia
+Icon=io.github.jakeroxs.xcom2_aaml
+Terminal=false
+Categories=Game;Utility;
+StartupNotify=true
+StartupWMClass=AAML.Avalonia

@@ -24,7 +24,7 @@ using AAML.Application.Logging;
 
 namespace AAML.Avalonia;
 
-public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModCatalogSource catalog, IGameLaunchCoordinator launchCoordinator, IGameConfigurationWriter configurationWriter, ISteamSettingsIntegrator steamSettings, IModIntentService modIntents, IProfileService profileService, IProfileInterchange profileInterchange, ILegacyProfileImportService legacyProfileImport, IModDependencyService dependencies, IModMetadataService metadataService, IModConflictService conflictService, IConfigurationDocumentCatalog configurationCatalog, IWorkshopOperationCoordinator workshopOperations, IWorkshopSubscriptionCoordinator subscriptions, IModRemovalFilesystem removalFilesystem, IModDuplicateAnalyzer duplicateAnalyzer, IDuplicatePreferenceService duplicatePreferences, IWorkshopService workshopService, IWorkshopPreviewCache workshopPreviewCache, IUpdateCheckService updateChecks, IApplicationDiagnostics diagnostics) : ReactiveObject, IDisposable
+public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModCatalogSource catalog, IGameLaunchCoordinator launchCoordinator, IGameConfigurationWriter configurationWriter, ISteamSettingsIntegrator steamSettings, IModIntentService modIntents, IProfileService profileService, IProfileInterchange profileInterchange, ILegacyProfileImportService legacyProfileImport, IModDependencyService dependencies, IModMetadataService metadataService, IModConflictService conflictService, IConfigurationDocumentCatalog configurationCatalog, IWorkshopOperationCoordinator workshopOperations, IWorkshopSubscriptionCoordinator subscriptions, IModRemovalFilesystem removalFilesystem, IModDuplicateAnalyzer duplicateAnalyzer, IDuplicatePreferenceService duplicatePreferences, IWorkshopService workshopService, IWorkshopPreviewCache workshopPreviewCache, IUpdateCheckService updateChecks, IApplicationDiagnostics diagnostics, IExistingModRootPreviewGuard modRootPreviewGuard) : ReactiveObject, IDisposable
 {
     private const string ModsAutoSaveOwner = "mods";
     private readonly SemaphoreSlim initialization = new(1, 1);
@@ -59,7 +59,16 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     public Task<Result> FlushAutoSaveOwnerAsync(string owner, CancellationToken cancellationToken) => autoSave.FlushAsync(owner, cancellationToken);
     public void CancelAutoSaveOwner(string owner) => autoSave.Cancel(owner);
 
-    public ApplicationSettings? Settings { get => settings; private set => this.RaiseAndSetIfChanged(ref settings, value); }
+    public ApplicationSettings? Settings
+    {
+        get => settings;
+        private set
+        {
+            if (ReferenceEquals(settings, value)) return;
+            modRootPreviewGuard.Clear();
+            this.RaiseAndSetIfChanged(ref settings, value);
+        }
+    }
     public SettingsOrigin? Origin { get => origin; private set => this.RaiseAndSetIfChanged(ref origin, value); }
     public string Status { get => status; private set => this.RaiseAndSetIfChanged(ref status, value); }
     public ObservableCollection<SessionModRow> ModRows { get; } = [];
@@ -678,6 +687,8 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     {
         if (Settings is null) return Result<GameLaunchOutcome>.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
         diagnostics.Write(LocalLogLevel.Information, "game.launch_requested", "Game launch requested.", new Dictionary<string, string> { ["game"] = Settings.SelectedGame.ToString() });
+        var rootSafety = modRootPreviewGuard.EnsureConfigurationSafe(Settings.SelectedGame);
+        if (!rootSafety.IsSuccess) { Status = rootSafety.Error!.Message; return Result<GameLaunchOutcome>.Failure(rootSafety.Error); }
         var duplicateValidation = ModDuplicateActivationPolicy.Validate(discoveredMods, modDrafts.Values, duplicateAnalyzer.Analyze(discoveredMods, Settings.DuplicatePreferences ?? []));
         if (!duplicateValidation.IsSuccess) { Status = duplicateValidation.Error!.Message; return Result<GameLaunchOutcome>.Failure(duplicateValidation.Error); }
         var savedIntents = await modIntents.SaveAsync(Settings, modDrafts.Values.ToArray(), cancellationToken);
@@ -727,6 +738,8 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     public async Task<Result> ApplyConfigurationAsync(CancellationToken cancellationToken)
     {
         if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        var rootSafety = modRootPreviewGuard.EnsureConfigurationSafe(Settings.SelectedGame);
+        if (!rootSafety.IsSuccess) { Status = rootSafety.Error!.Message; return rootSafety; }
         var duplicateValidation = ModDuplicateActivationPolicy.Validate(discoveredMods, modDrafts.Values, duplicateAnalyzer.Analyze(discoveredMods, Settings.DuplicatePreferences ?? []));
         if (!duplicateValidation.IsSuccess) { Status = duplicateValidation.Error!.Message; return duplicateValidation; }
         var saved = await modIntents.SaveAsync(Settings, modDrafts.Values.ToArray(), cancellationToken);
