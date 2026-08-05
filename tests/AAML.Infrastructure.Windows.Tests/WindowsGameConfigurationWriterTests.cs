@@ -48,7 +48,7 @@ public sealed class WindowsGameConfigurationWriterTests
 
     private sealed class RecordingAtomicWriter : IAtomicTextWriter
     {
-        public Dictionary<string, string> Contents { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> Contents { get; } = new(StringComparer.Ordinal);
         public Task<Result> WriteAsync(string path, string content, CancellationToken cancellationToken) { Contents[path] = content; return Task.FromResult(Result.Success()); }
     }
 }

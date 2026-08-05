@@ -13,8 +13,17 @@ public sealed record SettingsLoadReport(int SourceSchemaVersion, bool CanonicalR
 public sealed class JsonSettingsRepository(IApplicationPaths paths) : ISettingsRepository
 {
     private readonly SemaphoreSlim writeLock = new(1, 1);
+    private readonly Func<ApplicationSettings, CancellationToken, Task<Result>>? canonicalRewrite;
     private string SettingsPath => Path.Combine(paths.ConfigurationDirectory, "settings.json");
     public SettingsLoadReport? LastLoadReport { get; private set; }
+
+    internal JsonSettingsRepository(
+        IApplicationPaths paths,
+        Func<ApplicationSettings, CancellationToken, Task<Result>> canonicalRewrite)
+        : this(paths)
+    {
+        this.canonicalRewrite = canonicalRewrite;
+    }
 
     public async Task<Result<ApplicationSettings>> LoadAsync(CancellationToken cancellationToken)
     {
@@ -103,7 +112,9 @@ public sealed class JsonSettingsRepository(IApplicationPaths paths) : ISettingsR
             return Result<ApplicationSettings>.Success(read.Settings);
         }
 
-        var rewrite = await SaveAsync(read.Settings, cancellationToken).ConfigureAwait(false);
+        var rewrite = canonicalRewrite is null
+            ? await SaveAsync(read.Settings, cancellationToken).ConfigureAwait(false)
+            : await canonicalRewrite(read.Settings, cancellationToken).ConfigureAwait(false);
         LastLoadReport = new SettingsLoadReport(read.SourceSchemaVersion, true, rewrite.IsSuccess, rewrite.Error);
         return Result<ApplicationSettings>.Success(read.Settings);
     }

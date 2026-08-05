@@ -1,3 +1,4 @@
+using AAML.Application.Common;
 using AAML.Application.Settings;
 using AAML.Domain.Games;
 using AAML.Domain.Launching;
@@ -391,8 +392,8 @@ public sealed class JsonSettingsRepositoryTests
         try
         {
             var path = await SeedFixtureAsync(paths, 6);
-            await using var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var repository = new JsonSettingsRepository(paths);
+            var writeFailure = Result.Failure(new Error("settings.write_failed", "Synthetic rewrite failure.", ErrorKind.Io));
+            var repository = new JsonSettingsRepository(paths, (_, _) => Task.FromResult(writeFailure));
 
             var loaded = await repository.LoadAsync(TestContext.CancellationToken);
 

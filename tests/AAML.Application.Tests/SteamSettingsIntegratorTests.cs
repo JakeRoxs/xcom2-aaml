@@ -34,7 +34,7 @@ public sealed class SteamSettingsIntegratorTests
     [TestMethod]
     public async Task AmbiguousInstalledCopies_FailWithoutPersistingEitherCopy()
     {
-        var snapshot = Snapshot([Application("C:\\XCOM 2", true), Application("G:\\XCOM 2", true)], []);
+        var snapshot = Snapshot([Application("C:\\XCOM 2", "C:\\", true), Application("G:\\XCOM 2", "G:\\", true)], []);
         var repository = new RecordingRepository();
 
         var result = await new SteamSettingsIntegrator(new FixedDiscovery(snapshot), repository).DiscoverAndApplyAsync(Settings([]), TestContext.CancellationToken);
@@ -69,7 +69,12 @@ public sealed class SteamSettingsIntegratorTests
     private static SteamInstalledApplication Application(string path, bool exists)
     {
         var marker = path.IndexOf("\\steamapps", StringComparison.OrdinalIgnoreCase);
-        var library = marker >= 0 ? path[..marker] : Path.GetPathRoot(path) ?? path;
+        var library = marker >= 0 ? path[..marker] : path;
+        return Application(path, library, exists);
+    }
+
+    private static SteamInstalledApplication Application(string path, string library, bool exists)
+    {
         return new SteamInstalledApplication(SteamAppId.Xcom2, library, "appmanifest_268500.acf", "XCOM 2", path, "XCOM 2", "4", true, exists);
     }
     private static SteamGameDiscovery Snapshot(IReadOnlyList<SteamInstalledApplication> applications, IReadOnlyList<SteamWorkshopLocation> workshops) => new(SteamAppId.Xcom2, [], [], applications, workshops, [], [], []);
