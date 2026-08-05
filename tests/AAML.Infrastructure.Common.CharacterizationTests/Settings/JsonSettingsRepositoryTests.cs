@@ -537,7 +537,7 @@ public sealed class JsonSettingsRepositoryTests
     private static async Task<string> SeedFixtureAsync(TestPaths paths, int schema)
     {
         Directory.CreateDirectory(paths.ConfigurationDirectory);
-        var fixture = Path.Combine(AppContext.BaseDirectory, "TestAssets", "Compatibility", "Settings", $"schema-v{schema}.json");
+        var fixture = Path.Combine(AppContext.BaseDirectory, "TestAssets", "Compatibility", "settings", $"schema-v{schema}.json");
         var destination = Path.Combine(paths.ConfigurationDirectory, "settings.json");
         await File.WriteAllBytesAsync(destination, await File.ReadAllBytesAsync(fixture));
         return destination;
