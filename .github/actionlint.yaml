@@ -1,0 +1,6 @@
+self-hosted-runner:
+  labels:
+    - aaml-protected
+    - aaml-windows-game
+    - aaml-linux-proton
+    - aaml-steam-mutation

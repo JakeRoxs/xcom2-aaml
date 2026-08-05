@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:shell="clr-namespace:Zafiro.UI.Shell;assembly=Zafiro.UI"
+             xmlns:zac="clr-namespace:Zafiro.Avalonia.Controls;assembly=Zafiro.Avalonia"
+             xmlns:nav="clr-namespace:Zafiro.Avalonia.Controls.Navigation;assembly=Zafiro.Avalonia"
+             xmlns:local="using:AAML.Avalonia"
+             x:Class="AAML.Avalonia.AamlShellView"
+             x:DataType="shell:IHierarchicalShell">
+  <Grid ColumnDefinitions="Auto,*">
+    <Border IsVisible="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}">
+      <zac:SectionStrip Orientation="Vertical"
+                        Sections="{Binding RootLevel.Sections}"
+                        SelectedSection="{Binding RootLevel.SelectedSection.Value, Mode=TwoWay}" />
+    </Border>
+
+    <Grid Grid.Column="1" RowDefinitions="Auto,*">
+      <ToggleButton AutomationProperties.AutomationId="ShellRailToggle"
+                    Margin="8"
+                    HorizontalAlignment="Left"
+                    IsChecked="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}, Mode=TwoWay}"
+                    Content="☰"
+                    ToolTip.Tip="Show or hide navigation" />
+
+      <Grid Grid.Row="1" RowDefinitions="Auto,*">
+        <ItemsControl ItemsSource="{Binding ChildLevels.Value}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="shell:SectionLevel">
+              <zac:SectionStrip Orientation="Horizontal"
+                                Sections="{Binding Sections}"
+                                SelectedSection="{Binding SelectedSection.Value, Mode=TwoWay}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Frame Grid.Row="1"
+               Content="{Binding SelectedSection.Value.Navigator.Content^}"
+               BackCommand="{Binding SelectedSection.Value.Navigator.Back}">
+          <Interaction.Behaviors>
+            <nav:AutoHeaderFooterBehavior />
+          </Interaction.Behaviors>
+        </Frame>
+      </Grid>
+    </Grid>
+  </Grid>
+</UserControl>

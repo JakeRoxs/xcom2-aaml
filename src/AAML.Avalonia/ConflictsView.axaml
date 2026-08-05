@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" x:Class="AAML.Avalonia.ConflictsView" x:DataType="local:ConflictsViewModel" AutomationProperties.AutomationId="ConflictsPage">
+  <Grid Margin="24" RowDefinitions="Auto,10,Auto,10,*">
+    <StackPanel>
+      <TextBlock Classes="title" Text="Conflicts" />
+      <TextBlock Classes="muted" Text="Derived collisions among active mods. Results are never persisted as user settings." />
+    </StackPanel>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10">
+      <Button AutomationProperties.AutomationId="ConflictsRefreshButton" Command="{Binding Refresh}" Content="Refresh analysis" />
+      <TextBox AutomationProperties.AutomationId="ConflictsSearchTextBox" Width="280" Text="{Binding SearchText, Mode=TwoWay}" PlaceholderText="Filter files, classes, or mods" />
+      <Button Command="{Binding ShowInMods}" Content="Show involved mods" />
+      <TextBlock AutomationProperties.AutomationId="ConflictsStatus" VerticalAlignment="Center" Text="{Binding Status}" />
+    </StackPanel>
+    <Grid Grid.Row="4" ColumnDefinitions="2*,12,3*">
+      <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedConflict, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="130" />
+          <DataGridTextColumn Header="File or class" Binding="{Binding Subject}" Width="2*" />
+          <DataGridTextColumn Header="Mods" Binding="{Binding ParticipantsText}" Width="3*" />
+        </DataGrid.Columns>
+      </DataGrid>
+      <DataGrid Grid.Column="2" ItemsSource="{Binding Facts}" AutoGenerateColumns="False" IsReadOnly="True">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Package" Binding="{Binding PackageId.Value}" Width="160" />
+          <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="2*" />
+          <DataGridTextColumn Header="Source" Binding="{Binding RelativePath}" Width="2*" />
+          <DataGridTextColumn Header="Line" Binding="{Binding LineNumber}" Width="70" />
+        </DataGrid.Columns>
+      </DataGrid>
+    </Grid>
+  </Grid>
+</UserControl>

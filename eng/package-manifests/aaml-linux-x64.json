@@ -1,0 +1,37 @@
+{
+  "rid": "linux-x64",
+  "executable": "AAML.Avalonia",
+  "executableFormat": "elf",
+  "required": [
+    "AAML.Avalonia",
+    "AAML.Avalonia.dll",
+    "AAML.Avalonia.deps.json",
+    "AAML.Avalonia.runtimeconfig.json",
+    "tools/proton-wrapper/AAML.ProtonWrapper",
+    "tools/proton-wrapper/AAML.ProtonWrapper.dll",
+    "tools/proton-wrapper/AAML.ProtonWrapper.deps.json",
+    "tools/proton-wrapper/AAML.ProtonWrapper.runtimeconfig.json",
+    "tools/steam-probe/AAML.SteamProbe",
+    "tools/steam-probe/AAML.SteamProbe.dll",
+    "tools/steam-probe/AAML.SteamProbe.deps.json",
+    "tools/steam-probe/AAML.SteamProbe.runtimeconfig.json",
+    "tools/setup/aaml-proton-launch-option.sh",
+    "libhostfxr.so",
+    "libsteam_api.so",
+    "release-metadata.json",
+    "steamworks-manifest.json",
+    "sbom.cdx.json",
+    "THIRD-PARTY-NOTICES.txt",
+    "licenses/Steamworks.NET-LICENSE.txt",
+    "licenses/AAML-GPL-3.0.txt"
+  ],
+  "forbiddenNative": ["steam_api64.dll", "steam_api.dll"],
+  "forbiddenManagedPrefixes": [
+    "AML.Domain",
+    "AML.Application",
+    "AML.Infrastructure.Common",
+    "AML.Infrastructure.Windows",
+    "AML.Infrastructure.Linux",
+    "AML.Infrastructure.Steam"
+  ]
+}

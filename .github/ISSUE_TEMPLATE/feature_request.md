@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a feature to help us improve AML
+about: Suggest a feature to help us improve AAML
 title: ''
 labels: 'Status: Review, Type: Enhancement'
 assignees: ''

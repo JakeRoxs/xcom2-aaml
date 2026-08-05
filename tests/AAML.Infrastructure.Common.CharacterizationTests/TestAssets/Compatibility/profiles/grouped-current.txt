@@ -1,0 +1,6 @@
+Gameplay (2):
+	Synthetic Mod A 	SyntheticA 	900000001 	Stable;Campaign
+	Synthetic Mod B 	SyntheticB 	https://steamcommunity.com/sharedfiles/filedetails/?id=900000002 	Fix
+
+Local (1):
+	Local Synthetic 	LocalSynthetic 	Unknown 	Local

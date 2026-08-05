@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "packageNames": ["runtimepack.Microsoft.NETCore.App.Runtime.win-x64", "runtimepack.Microsoft.NETCore.App.Runtime.linux-x64"],
+      "versions": ["10.0.10"],
+      "classification": "runtime-pack",
+      "spdx": "MIT",
+      "repository": "https://github.com/dotnet/runtime",
+      "ref": "v10.0.10",
+      "path": "LICENSE.TXT",
+      "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
+      "notes": "Self-contained Microsoft.NETCore.App runtime pack shipped by the staged artifact."
+    },
+    {
+      "packagePatterns": ["Microsoft.Extensions.*"],
+      "versions": ["9.0.10", "10.0.1"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/dotnet/runtime",
+      "ref": "v9.0.10 and v10.0.1",
+      "path": "LICENSE.TXT",
+      "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
+      "notes": "The exact LICENSE.TXT blob (Git blob 984713a49622a96da110443c15477613bc12656b) is identical at both release tags. The wildcard is intentionally limited to Microsoft.Extensions packages."
+    },
+    {
+      "packageNames": ["System.ComponentModel.Annotations"],
+      "versions": ["5.0.0"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/dotnet/runtime",
+      "ref": "v5.0.0",
+      "path": "LICENSE.TXT",
+      "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
+      "notes": "Exact upstream release-tag license; deduplicated because its Git blob is identical to the other .NET Foundation MIT evidence."
+    },
+    {
+      "packageNames": ["System.IO.Hashing"],
+      "versions": ["9.0.10"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/dotnet/runtime",
+      "ref": "v9.0.10",
+      "path": "LICENSE.TXT",
+      "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
+      "notes": "Exact upstream release-tag license."
+    },
+    {
+      "packageNames": ["System.Reactive", "Microsoft.Reactive.Testing"],
+      "versions": ["6.1.0"],
+      "classification": "mixed-runtime-and-test-support",
+      "spdx": "MIT",
+      "repository": "https://github.com/dotnet/reactive",
+      "ref": "rxnet-v6.1.0",
+      "commit": "f4da16f15a3cde97f178396ea6e3489cc893651f",
+      "path": "LICENSE",
+      "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
+      "notes": "System.Reactive is a runtime library. Microsoft.Reactive.Testing is test-support infrastructure and should not be treated as shipped merely because it appears in a restore graph. The release tag and NuGet repository commit agree."
+    },
+    {
+      "packageNames": ["ReactiveUI"],
+      "versions": ["23.2.28"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/reactiveui/ReactiveUI",
+      "ref": "23.2.28",
+      "commit": "7c1ab24d9c84ed225c738bdb9f1a2f2586c6a5bc",
+      "path": "LICENSE",
+      "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
+      "notes": "The package nuspec repository commit matches the release tag."
+    },
+    {
+      "packageNames": ["ReactiveUI.Avalonia"],
+      "versions": ["11.4.13"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/reactiveui/ReactiveUI",
+      "ref": "23.2.28",
+      "path": "LICENSE",
+      "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
+      "notes": "NuGet 11.4.13 declares MIT and records commit 0e6157063bfe95bbf92540a1553a24368ea132cb, but that commit is not resolvable in the current public repository. The exact same project license is pinned at the contemporaneous ReactiveUI 23.2.28 tag used by this package."
+    },
+    {
+      "packageNames": ["ReactiveUI.Validation"],
+      "versions": ["7.1.0"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/reactiveui/ReactiveUI.Validation",
+      "ref": "v7.1.0",
+      "commit": "f7e3a5d2b7c567dba7e6db78a2c57fb0e1036a99",
+      "path": "LICENSE",
+      "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
+      "notes": "The package nuspec repository commit matches the release tag; the license blob is identical to the shared .NET Foundation MIT evidence."
+    },
+    {
+      "packageNames": ["ReactiveUI.SourceGenerators", "ReactiveUI.SourceGenerators.Analyzers.CodeFixes"],
+      "versions": ["2.6.1"],
+      "classification": "build-only-development-dependency",
+      "spdx": "MIT",
+      "repository": "https://github.com/reactiveui/ReactiveUI.SourceGenerators",
+      "ref": "2.6.1",
+      "commit": "84d74d0ec277a03c1be3e68220ccee695f204848",
+      "path": "LICENSE",
+      "localFiles": ["eng/license-texts/reactiveui-sourcegenerators-license.txt"],
+      "notes": "Both nuspecs set developmentDependency=true and point to the same commit. The exact upstream LICENSE includes the required .NET Community Toolkit and PolySharp portion notices."
+    },
+    {
+      "packagePatterns": ["Splat", "Splat.*"],
+      "versions": ["19.4.1"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/reactiveui/splat",
+      "ref": "v19.4.1",
+      "commit": "987cd94f23b53516aa3dd44dc3afb33c7378a3db",
+      "path": "LICENSE",
+      "localFiles": ["eng/license-texts/splat-mit.txt"],
+      "notes": "Covers Splat, Splat.Builder, Splat.Core, and Splat.Logging at the same release."
+    },
+    {
+      "packageNames": ["ReactiveProperty", "ReactiveProperty.Core"],
+      "versions": ["9.8.0"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/runceel/ReactiveProperty",
+      "ref": "v9.8.0",
+      "path": "LICENSE.txt",
+      "localFiles": ["eng/license-texts/reactiveproperty-mit.txt"],
+      "notes": "Both packages are produced from the same tagged repository and share this exact license."
+    },
+    {
+      "packageNames": ["DynamicData"],
+      "versions": ["9.4.33"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/reactivemarbles/DynamicData",
+      "ref": "9.4.33",
+      "commit": "cc8b91ea362097cd26339c3727da77e533e7802c",
+      "path": "LICENSE",
+      "localFiles": ["eng/license-texts/dynamicdata-mit.txt"],
+      "notes": "GitHub redirects the former reactiveui/DynamicData repository to reactivemarbles/DynamicData. The package nuspec records the listed commit; the release tag supplies the exact license text."
+    },
+    {
+      "packageNames": ["Newtonsoft.Json"],
+      "versions": ["13.0.3"],
+      "classification": "runtime-library",
+      "spdx": "MIT",
+      "repository": "https://github.com/JamesNK/Newtonsoft.Json",
+      "ref": "13.0.3",
+      "path": "LICENSE.md",
+      "localFiles": ["eng/license-texts/newtonsoft-json-mit.md"],
+      "notes": "Exact upstream release-tag license."
+    }
+  ]
+}

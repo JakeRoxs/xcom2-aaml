@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" x:Class="AAML.Avalonia.MigrationView" x:DataType="local:MigrationViewModel" AutomationProperties.AutomationId="MigrationPage">
+  <Grid Margin="24" RowDefinitions="Auto,16,Auto,16,*">
+    <StackPanel>
+      <TextBlock Classes="title" Text="Migration" />
+      <TextBlock Classes="muted" Text="Rehearse legacy AML lists and snapshots before adopting them. Previewing never changes source or modern data." />
+    </StackPanel>
+    <StackPanel Grid.Row="2" Spacing="10">
+      <WrapPanel><ToggleSwitch IsChecked="{Binding ReplaceActiveSet}" Content="Replace current active set" /><Button AutomationProperties.AutomationId="MigrationPreviewActiveModsButton" Margin="12,0,0,0" Command="{Binding PreviewActiveMods}" Content="Preview game ActiveMods" /><Button AutomationProperties.AutomationId="MigrationConfirmActiveModsButton" Margin="8,0,0,0" Command="{Binding ApplyActiveMods}" Content="Confirm active mods" /></WrapPanel>
+      <WrapPanel><Button Command="{Binding PreviewSnapshots}" Content="Choose legacy settings.json" /><Button Margin="8,0,0,0" Command="{Binding ApplySnapshots}" Content="Confirm snapshot import" /></WrapPanel>
+      <WrapPanel><Button Command="{Binding PreviewOverrideCleanup}" Content="Preview obsolete overrides" /><Button Margin="8,0,0,0" Command="{Binding ApplyOverrideCleanup}" Content="Confirm cleanup" /></WrapPanel>
+    </StackPanel>
+    <TextBox AutomationProperties.AutomationId="MigrationReport" Grid.Row="4" Text="{Binding Report}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+  </Grid>
+</UserControl>

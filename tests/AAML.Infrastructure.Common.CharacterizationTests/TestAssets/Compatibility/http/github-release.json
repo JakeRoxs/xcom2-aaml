@@ -1,0 +1,16 @@
+{
+  "url": "https://api.example.invalid/releases/1",
+  "assets_url": "https://api.example.invalid/releases/1/assets",
+  "html_url": "https://example.invalid/releases/v9.9.9",
+  "id": 1,
+  "tag_name": "v9.9.9",
+  "target_commitish": "main",
+  "name": "Synthetic Release 9.9.9",
+  "draft": false,
+  "author": {"login":"fixture-user","id":1,"type":"User","site_admin":false},
+  "prerelease": false,
+  "created_at": "2024-01-01T00:00:00Z",
+  "published_at": "2024-01-02T00:00:00Z",
+  "assets": [{"id":1,"name":"Synthetic_9.9.9.zip","content_type":"application/x-zip-compressed","state":"uploaded","size":123456,"download_count":42,"browser_download_url":"https://example.invalid/Synthetic_9.9.9.zip"}],
+  "body": "## Synthetic notes\r\n\r\nNo real account data."
+}

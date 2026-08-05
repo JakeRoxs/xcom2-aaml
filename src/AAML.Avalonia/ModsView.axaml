@@ -1,0 +1,221 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:AAML.Avalonia"
+             x:Class="AAML.Avalonia.ModsView"
+             x:DataType="local:ModsViewModel"
+             AutomationProperties.AutomationId="ModsPage">
+  <Grid Margin="24" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="10">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+      <StackPanel>
+        <TextBlock Classes="title" Text="Mods" />
+        <TextBlock Classes="muted" Text="Choose which mods load and in what order." />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <TextBlock IsVisible="{Binding HasUnsaved}" VerticalAlignment="Center" Text="{Binding UnsavedModDraftCount, StringFormat='{}{0} unsaved'}" />
+        <ToggleButton AutomationProperties.AutomationId="ModsInspectorToggle" IsChecked="{Binding IsInspectorVisible, Mode=TwoWay}" Content="Details" ToolTip.Tip="Show or hide the mod preview and details inspector" />
+        <Button Command="{Binding DiscardActivation}" Content="Discard" />
+        <Button Classes="accent" Command="{Binding Save}" Content="Save changes" />
+      </StackPanel>
+    </Grid>
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,180,Auto,Auto" ColumnSpacing="10">
+      <TextBox AutomationProperties.AutomationId="ModsSearchTextBox" Text="{Binding SearchText, Mode=TwoWay}" PlaceholderText="Search by name, package, or Workshop ID" />
+      <CheckBox Grid.Column="1" VerticalAlignment="Center" IsChecked="{Binding GroupByCategory, Mode=TwoWay}" Content="Group by category" />
+      <CheckBox Grid.Column="2" VerticalAlignment="Center" IsChecked="{Binding IncludeHidden, Mode=TwoWay}" Content="Show hidden" />
+      <ComboBox Grid.Column="3" ItemsSource="{Binding StateFilters}" SelectedItem="{Binding SelectedStateFilter}">
+        <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+      </ComboBox>
+      <Button AutomationProperties.AutomationId="ModsRefreshButton" Grid.Column="4" Command="{Binding Refresh}" Content="Refresh mods" />
+      <Button Grid.Column="5" Command="{Binding SaveView}" Content="Save view" />
+    </Grid>
+
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="12" IsVisible="{Binding HasSelection}">
+      <TextBlock VerticalAlignment="Center" Text="{Binding SelectedCount, StringFormat='{}{0} selected'}" />
+      <WrapPanel Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal">
+        <Button Margin="0,0,6,6" Command="{Binding ActivateSelected}" Content="Activate" />
+        <Button Margin="0,0,6,6" Command="{Binding DeactivateSelected}" Content="Deactivate" />
+        <Button Margin="0,0,6,6" Command="{Binding MoveUp}" Content="Move up" />
+        <Button Margin="0,0,6,6" Command="{Binding MoveDown}" Content="Move down" />
+        <Expander Header="More actions" IsExpanded="False">
+          <WrapPanel MaxWidth="620" Orientation="Horizontal">
+            <Button Margin="0,0,6,6" Command="{Binding Renumber}" Content="Renumber all" />
+            <Button Margin="0,0,6,6" Command="{Binding HideSelected}" Content="Hide selected" />
+            <Button Margin="0,0,6,6" Command="{Binding UnhideSelected}" Content="Unhide selected" />
+            <Button Margin="0,0,6,6" Command="{Binding ToggleGroup}" Content="Expand/collapse group" />
+            <Button IsVisible="{Binding HasFocusedMods}" Command="{Binding ClearFocusedMods}" Content="Clear conflict filter" />
+          </WrapPanel>
+        </Expander>
+      </WrapPanel>
+    </Grid>
+
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <TextBlock FontWeight="SemiBold" Text="Workshop" />
+        <TextBlock Classes="muted" Text="{Binding WorkshopConnectionDisplay}" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+        <TextBlock TextTrimming="CharacterEllipsis" Text="{Binding WorkshopSummary}" />
+        <ProgressBar IsVisible="{Binding IsMonitoringWorkshop}" Minimum="0" Maximum="100" Value="{Binding WorkshopProgress}" />
+      </StackPanel>
+      <WrapPanel Grid.Column="2" Orientation="Horizontal">
+        <Button Margin="0,0,6,0" IsEnabled="{Binding CanRefreshWorkshop}" Command="{Binding RefreshWorkshop}" Content="Refresh" />
+        <Button Margin="0,0,6,0" IsVisible="{Binding CanUpdateSelected}" Command="{Binding UpdateSelected}" Content="Update selected" />
+        <Button IsVisible="{Binding IsMonitoringWorkshop}" Command="{Binding StopMonitoring}" Content="Stop watching downloads" />
+      </WrapPanel>
+    </Grid>
+
+    <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto">
+      <DataGrid x:Name="ModsGrid" AutomationProperties.AutomationId="ModsGrid" MinWidth="320" ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="False" RowHeight="34" SelectionMode="Extended" CanUserResizeColumns="True" CanUserReorderColumns="True" ScrollViewer.HorizontalScrollBarVisibility="Auto" SelectionChanged="OnSelectionChanged">
+        <DataGrid.Columns>
+          <DataGridTemplateColumn Header="Active" Width="86" MinWidth="86" CanUserResize="True">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="local:SessionModRow">
+                <CheckBox AutomationProperties.AutomationId="ModsActiveCheckBox" HorizontalAlignment="Center" IsEnabled="{Binding CanActivate}" IsChecked="{Binding IsActive, Mode=TwoWay}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Name" Binding="{Binding Name}" IsReadOnly="True" Width="*" MinWidth="260" CanUserResize="True" />
+          <DataGridTextColumn Header="Order" Binding="{Binding Order, Mode=TwoWay}" Width="80" MinWidth="72" CanUserResize="True" />
+          <DataGridTemplateColumn Header="WotC" Width="76" MinWidth="70" CanUserResize="True">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="local:SessionModRow">
+                <CheckBox HorizontalAlignment="Center" IsVisible="{Binding !IsGroup}" IsChecked="{Binding RequiresWarOfTheChosen}" IsHitTestVisible="False" Focusable="False" AutomationProperties.HelpText="Checked when this mod targets War of the Chosen" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="State" Binding="{Binding State}" Width="150" MinWidth="120" CanUserResize="True" />
+          <DataGridTemplateColumn Header="Workshop" Width="180" MinWidth="140" CanUserResize="True">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="local:SessionModRow">
+                <StackPanel>
+                  <TextBlock Text="{Binding Workshop}" />
+                  <ProgressBar IsVisible="{Binding IsDownloading}" Minimum="0" Maximum="100" Value="{Binding DownloadProgress}" />
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Count" Binding="{Binding Count}" Width="72" MinWidth="64" CanUserResize="True" />
+        </DataGrid.Columns>
+      </DataGrid>
+
+      <GridSplitter Grid.Column="1" Width="6" IsVisible="{Binding IsInspectorVisible}" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Background="{DynamicResource ThemeBorderLowBrush}" />
+
+      <Grid Grid.Column="2" Width="340" MinWidth="280" MaxWidth="520" Margin="12,0,0,0" IsVisible="{Binding IsInspectorVisible}" RowDefinitions="Auto,10,*">
+        <Border AutomationProperties.AutomationId="ModsPreviewImage" Height="180" CornerRadius="8" ClipToBounds="True">
+          <Grid>
+            <TextBlock Classes="muted" HorizontalAlignment="Center" VerticalAlignment="Center" Text="No mod preview image" />
+            <local:FileImage SourcePath="{Binding SelectedPreviewImagePath}" Stretch="Uniform" />
+          </Grid>
+        </Border>
+      <Expander Grid.Row="2" Header="Details inspector" IsExpanded="True">
+        <ScrollViewer>
+          <StackPanel Margin="12,8,0,0" Spacing="10">
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="{Binding SelectedRow.Name, FallbackValue=Select a mod}" />
+
+            <Expander Header="Overview" IsExpanded="False">
+              <StackPanel Spacing="6">
+                <TextBlock Text="{Binding SelectedRow.PackageId.Value, StringFormat='Package: {0}'}" />
+                <TextBlock Text="{Binding SelectedRow.Source, StringFormat='Source: {0}'}" />
+                <TextBlock TextWrapping="Wrap" Text="{Binding SelectedRow.Description, StringFormat='Description: {0}'}" />
+                <WrapPanel Orientation="Horizontal">
+                  <Button Margin="0,0,6,6" Command="{Binding OpenModFolder}" Content="Open folder" />
+                  <Button Margin="0,0,6,6" Command="{Binding OpenReadme}" Content="Open README" />
+                </WrapPanel>
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="Workshop" IsExpanded="False">
+              <StackPanel Spacing="6">
+                <TextBlock Text="{Binding SelectedRow.WorkshopId.Value, StringFormat='Workshop ID: {0}'}" />
+                <TextBlock TextWrapping="Wrap" Text="{Binding SelectedRow.WorkshopUrl, StringFormat='URL: {0}'}" />
+                <WrapPanel Orientation="Horizontal">
+                  <Button Margin="0,0,6,6" Command="{Binding OpenWorkshop}" Content="Open Workshop" />
+                  <Button Margin="0,0,6,6" Command="{Binding OpenChangelog}" Content="Open changelog" />
+                  <Button IsEnabled="{Binding CanLoadOnlineDetails}" Command="{Binding LoadOnlineDetails}" Content="Load Steam details" />
+                </WrapPanel>
+                <TextBlock TextWrapping="Wrap" Text="{Binding OnlineDetails}" />
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="Dependencies" IsExpanded="False">
+              <StackPanel Spacing="6">
+                <Button HorizontalAlignment="Left" IsEnabled="{Binding CanLoadDependencies}" Command="{Binding LoadDependencies}" Content="Load dependency details" />
+                <TextBlock FontWeight="SemiBold" Text="Required" />
+                <DataGrid MaxHeight="180" ItemsSource="{Binding RequiredDependencies}" SelectedItem="{Binding SelectedDependency}" AutoGenerateColumns="False" IsReadOnly="True">
+                  <DataGrid.Columns><DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" /><DataGridTextColumn Header="Scope" Binding="{Binding Scope}" Width="100" /><DataGridTextColumn Header="State" Binding="{Binding Status}" Width="100" /></DataGrid.Columns>
+                </DataGrid>
+                <WrapPanel Orientation="Horizontal"><Button Margin="0,0,6,6" Command="{Binding ActivateDependency}" Content="Activate" /><Button Margin="0,0,6,6" Command="{Binding ToggleDependencyIgnored}" Content="Ignore/unignore" /><Button Command="{Binding ShowDependency}" Content="Show mod" /></WrapPanel>
+                <TextBlock FontWeight="SemiBold" Text="Dependents" />
+                <DataGrid MaxHeight="150" ItemsSource="{Binding Dependents}" SelectedItem="{Binding SelectedDependency}" AutoGenerateColumns="False" IsReadOnly="True">
+                  <DataGrid.Columns><DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" /><DataGridTextColumn Header="Scope" Binding="{Binding Scope}" Width="100" /><DataGridTextColumn Header="State" Binding="{Binding Status}" Width="100" /></DataGrid.Columns>
+                </DataGrid>
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="Metadata" IsExpanded="False">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Manual name" /><TextBox Text="{Binding ManualName, Mode=TwoWay}" />
+                <TextBlock Text="Note" /><TextBox MinHeight="72" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding Note, Mode=TwoWay}" />
+                <CheckBox IsChecked="{Binding IsHidden, Mode=TwoWay}" Content="Hidden" />
+                <TextBlock Text="Category" />
+                <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                <Button HorizontalAlignment="Left" Command="{Binding ClearCategory}" Content="Clear category" />
+                <TextBlock Text="Tags (comma-separated existing names)" /><TextBox Text="{Binding TagNames, Mode=TwoWay}" />
+                <WrapPanel Orientation="Horizontal">
+                  <Button Margin="0,0,6,6" Command="{Binding SaveMetadata}" Content="Save details" />
+                  <Button Margin="0,0,6,6" Command="{Binding BulkCategory}" Content="Assign category to selected" />
+                  <Button Margin="0,0,6,6" Command="{Binding BulkTags}" Content="Add tags to selected" />
+                  <Button Command="{Binding BulkRemoveTags}" Content="Remove tags from selected" />
+                </WrapPanel>
+                <Expander Header="Manage categories and tags" IsExpanded="False">
+                  <StackPanel Spacing="6">
+                    <TextBox Text="{Binding TaxonomyName, Mode=TwoWay}" PlaceholderText="Name" />
+                    <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory, Mode=TwoWay}" PlaceholderText="Category"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                    <WrapPanel Orientation="Horizontal"><Button Margin="0,0,6,6" Command="{Binding CreateCategory}" Content="New category" /><Button Margin="0,0,6,6" Command="{Binding RenameCategory}" Content="Rename" /><Button Margin="0,0,6,6" Command="{Binding MoveCategoryUp}" Content="Up" /><Button Margin="0,0,6,6" Command="{Binding MoveCategoryDown}" Content="Down" /><Button Command="{Binding DeleteCategory}" Content="Delete" /></WrapPanel>
+                    <ComboBox ItemsSource="{Binding Tags}" SelectedItem="{Binding SelectedTag, Mode=TwoWay}" PlaceholderText="Tag"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                    <WrapPanel Orientation="Horizontal"><Button Margin="0,0,6,6" Command="{Binding CreateTag}" Content="New tag" /><Button Margin="0,0,6,6" Command="{Binding RenameTag}" Content="Rename tag" /><Button Margin="0,0,6,6" Command="{Binding DeleteTag}" Content="Delete tag" /><TextBox Width="110" Margin="0,0,6,6" Text="{Binding TagColor}" PlaceholderText="#RRGGBB" /><Button Command="{Binding SaveTagColor}" Content="Save color" /></WrapPanel>
+                  </StackPanel>
+                </Expander>
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="Advanced" IsExpanded="False">
+              <StackPanel Spacing="6">
+                <TextBlock TextWrapping="Wrap" Text="{Binding SelectedRow.Location, StringFormat='Location: {0}'}" />
+                <TextBlock Text="{Binding SelectedRow.DuplicateStatus, StringFormat='Duplicate: {0}'}" />
+                <TextBlock Text="{Binding SelectedRow.DescriptorCategory, StringFormat='Descriptor category: {0}'}" />
+                <TextBlock TextWrapping="Wrap" Text="{Binding SelectedRow.DescriptorTags, StringFormat='Descriptor tags: {0}'}" />
+                <Button HorizontalAlignment="Left" Command="{Binding AdoptDescriptorTaxonomy}" Content="Adopt descriptor category/tags" />
+                <Button HorizontalAlignment="Left" Command="{Binding AdoptWorkshopTags}" Content="Adopt Workshop tags" />
+                <WrapPanel Orientation="Horizontal"><Button Margin="0,0,6,6" Command="{Binding PreferDuplicate}" Content="Prefer this installation" /><Button Margin="0,0,6,6" Command="{Binding ClearDuplicatePreference}" Content="Clear preference" /><Button Command="{Binding ShowDuplicateGroup}" Content="Show duplicate group" /></WrapPanel>
+              </StackPanel>
+            </Expander>
+
+            <Expander AutomationProperties.AutomationId="ModsDangerZone" Header="Danger zone" IsExpanded="False">
+              <StackPanel Spacing="8">
+                <Button HorizontalAlignment="Left" IsVisible="{Binding CanSubscribeMissing}" Command="{Binding SubscribeMissing}" Content="Subscribe to missing Workshop item" />
+                <StackPanel IsVisible="{Binding CanUnsubscribeRetain}" Spacing="4">
+                  <CheckBox IsChecked="{Binding ConfirmUnsubscribeRetain}" Content="I understand the Workshop subscription will be removed while AAML retains the item intent." />
+                  <Button HorizontalAlignment="Left" IsEnabled="{Binding ConfirmUnsubscribeRetain}" Command="{Binding UnsubscribeRetain}" Content="Unsubscribe and retain" />
+                </StackPanel>
+                <StackPanel IsVisible="{Binding CanRemoveRetainedIntent}" Spacing="4">
+                  <CheckBox IsChecked="{Binding ConfirmRemoveRetainedIntent}" Content="I understand the retained item intent will be removed." />
+                  <Button HorizontalAlignment="Left" IsEnabled="{Binding ConfirmRemoveRetainedIntent}" Command="{Binding RemoveRetainedIntent}" Content="Remove retained intent" />
+                </StackPanel>
+                <StackPanel IsVisible="{Binding CanPreviewRemoval}" Spacing="4">
+                  <Button HorizontalAlignment="Left" IsVisible="{Binding CanPreviewRemoval}" Command="{Binding PreviewRemoval}" Content="Preview manual mod deletion" />
+                  <TextBlock TextWrapping="Wrap" Text="{Binding RemovalSummary}" />
+                  <CheckBox IsChecked="{Binding ConfirmManualDeletion}" Content="I reviewed the preview and understand these files will be permanently deleted." />
+                  <Button HorizontalAlignment="Left" IsEnabled="{Binding CanConfirmRemoval}" Command="{Binding ConfirmRemoval}" Content="Delete manual mod files" />
+                </StackPanel>
+              </StackPanel>
+            </Expander>
+          </StackPanel>
+        </ScrollViewer>
+      </Expander>
+      </Grid>
+    </Grid>
+
+    <TextBlock AutomationProperties.AutomationId="ModsStatus" Grid.Row="5" TextWrapping="Wrap" Text="{Binding Status}" />
+  </Grid>
+</UserControl>

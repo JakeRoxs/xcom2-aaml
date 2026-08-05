@@ -1,0 +1,10 @@
+{
+  "GamePath": "C:\\AML-Fixtures\\Games\\XCOM 2",
+  "SavePath": "C:\\AML-Fixtures\\Documents\\SaveData",
+  "ModPaths": ["C:\\AML-Fixtures\\ManualMods\\"],
+  "Arguments": "-review -noRedscreens -log",
+  "ShowUpgradeWarning": true,
+  "Mods": {"Entries": {}},
+  "Tags": {},
+  "Windows": {}
+}

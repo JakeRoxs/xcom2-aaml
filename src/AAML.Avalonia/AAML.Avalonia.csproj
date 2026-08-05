@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AAML.Domain/AAML.Domain.csproj" />
+    <ProjectReference Include="../AAML.Application/AAML.Application.csproj" />
+    <ProjectReference Include="../AAML.Infrastructure.Common/AAML.Infrastructure.Common.csproj" />
+    <ProjectReference Include="../AAML.Infrastructure.Windows/AAML.Infrastructure.Windows.csproj" />
+    <ProjectReference Include="../AAML.Infrastructure.Linux/AAML.Infrastructure.Linux.csproj" />
+    <ProjectReference Include="../AAML.Infrastructure.Steam/AAML.Infrastructure.Steam.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) ">
+    <Content Include="../ThirdParty/redistributable_bin/win64/steam_api64.dll" Link="steam_api64.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Linux'))) ">
+    <Content Include="../ThirdParty/redistributable_bin/linux64/libsteam_api.so" Link="libsteam_api.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.4" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.4" />
+    <PackageReference Include="DynamicData" Version="9.4.33" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
+    <PackageReference Include="Optris.Icons.Avalonia.FontAwesome" Version="12.0.4" />
+    <PackageReference Include="ReactiveUI" Version="23.2.28" />
+    <PackageReference Include="ReactiveUI.Avalonia" Version="11.4.13" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Zafiro.Avalonia" Version="53.3.0" />
+    <PackageReference Include="Zafiro.Avalonia.Dialogs" Version="53.3.0" />
+    <PackageReference Include="Zafiro.Avalonia.Icons.Optris" Version="53.3.0" />
+    <PackageReference Include="Zafiro.UI" Version="47.1.1" />
+  </ItemGroup>
+</Project>

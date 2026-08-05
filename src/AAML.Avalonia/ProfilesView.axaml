@@ -1,0 +1,37 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" x:Class="AAML.Avalonia.ProfilesView" x:DataType="local:ProfilesViewModel" AutomationProperties.AutomationId="ProfilesPage">
+  <Grid Margin="24" RowDefinitions="Auto,10,Auto,10,Auto,10,*">
+    <StackPanel>
+      <TextBlock Classes="title" Text="Profiles" />
+      <TextBlock Classes="muted" Text="Portable snapshots of game mode, active mods, load order, and launch arguments." />
+    </StackPanel>
+    <WrapPanel Grid.Row="2" Orientation="Horizontal">
+      <TextBox AutomationProperties.AutomationId="ProfilesNameTextBox" Text="{Binding ProfileName, Mode=TwoWay}" PlaceholderText="Profile name" />
+      <Button AutomationProperties.AutomationId="ProfilesCreateButton" Margin="8,0,0,0" Command="{Binding Create}" Content="Create" />
+      <Button AutomationProperties.AutomationId="ProfilesApplyButton" Margin="8,0,0,0" Command="{Binding Apply}" Content="Apply" />
+      <Button Margin="8,0,0,0" Command="{Binding Rename}" Content="Rename" />
+      <Button Margin="8,0,0,0" Command="{Binding Duplicate}" Content="Duplicate" />
+      <Button Margin="8,0,0,0" Command="{Binding Delete}" Content="Delete" />
+      <Button Margin="8,0,0,0" Command="{Binding Import}" Content="Import" />
+      <Button Margin="8,0,0,0" Command="{Binding ImportLegacy}" Content="Import legacy .txt" />
+      <Button Margin="8,0,0,0" Command="{Binding Export}" Content="Export" />
+      <Button Margin="8,0,0,0" Command="{Binding ExportLegacy}" Content="Export legacy .txt" />
+      <Button Margin="8,0,0,0" Command="{Binding Refresh}" Content="Refresh" />
+    </WrapPanel>
+    <Grid Grid.Row="4" RowDefinitions="Auto,8,Auto">
+      <WrapPanel><Button AutomationProperties.AutomationId="ProfilesConfirmLegacyButton" Command="{Binding ConfirmLegacyPortable}" Content="Import with profile metadata" /><Button Margin="8,0,0,0" Command="{Binding ConfirmLegacyAdopt}" Content="Import and adopt taxonomy" /><Button Margin="8,0,0,0" Command="{Binding ConfirmLegacyIgnore}" Content="Import identities only" /></WrapPanel>
+      <TextBox Grid.Row="2" Text="{Binding LegacyReport}" IsReadOnly="True" AcceptsReturn="True" MaxHeight="150" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+    </Grid>
+    <Grid Grid.Row="6" RowDefinitions="Auto,8,2*,8,Auto,8,*">
+      <TextBlock AutomationProperties.AutomationId="ProfilesStatus" Text="{Binding Status}" />
+      <DataGrid Grid.Row="2" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
+          <DataGridTextColumn Header="Game" Binding="{Binding GameVariant}" Width="220" />
+          <DataGridTextColumn Header="Mods" Binding="{Binding ModCount}" Width="100" />
+        </DataGrid.Columns>
+      </DataGrid>
+      <WrapPanel Grid.Row="4"><Button Margin="0,0,8,8" Command="{Binding LoadMissing}" Content="Load missing items" /><Button Command="{Binding SubscribeMissing}" Content="Subscribe missing items" /></WrapPanel>
+      <DataGrid Grid.Row="6" ItemsSource="{Binding MissingItems}" AutoGenerateColumns="False" IsReadOnly="True"><DataGrid.Columns><DataGridTextColumn Header="Package" Binding="{Binding PackageId}" Width="*" /><DataGridTextColumn Header="Workshop ID" Binding="{Binding WorkshopId.Value}" Width="180" /></DataGrid.Columns></DataGrid>
+    </Grid>
+  </Grid>
+</UserControl>

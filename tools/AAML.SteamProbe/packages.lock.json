@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "aaml.application": {
+        "type": "Project",
+        "dependencies": {
+          "AAML.Domain": "[1.0.0, )"
+        }
+      },
+      "aaml.domain": {
+        "type": "Project"
+      },
+      "aaml.infrastructure.steam": {
+        "type": "Project",
+        "dependencies": {
+          "AAML.Application": "[1.0.0, )",
+          "Steamworks.NET": "[1.0.0, )"
+        }
+      },
+      "steamworks.net": {
+        "type": "Project"
+      }
+    },
+    "net10.0/linux-x64": {},
+    "net10.0/win-x64": {}
+  }
+}

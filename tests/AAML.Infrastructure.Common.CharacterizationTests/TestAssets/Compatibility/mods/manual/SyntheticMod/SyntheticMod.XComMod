@@ -1,0 +1,9 @@
+[mod]
+publishedfileid=900000001
+title=Synthetic Compatibility Mod
+category=Compatibility Fixtures
+description=First synthetic line
+second synthetic line
+tags=Strategy,Test
+contentimage=ModPreview.jpg
+requiresxpack=true

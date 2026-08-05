@@ -1,0 +1,26 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:AAML.Avalonia"
+             xmlns:misc="clr-namespace:Zafiro.Avalonia.Misc;assembly=Zafiro.Avalonia"
+             x:Class="AAML.Avalonia.App"
+             RequestedThemeVariant="Default">
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://Zafiro.Avalonia/Styles.axaml" />
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+    <Style Selector="TextBlock.title"><Setter Property="FontSize" Value="28" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock.muted"><Setter Property="Opacity" Value="0.72" /></Style>
+  </Application.Styles>
+  <Application.DataTemplates>
+    <misc:DataTemplateInclude Source="avares://Zafiro.Avalonia/DataTemplates.axaml" />
+    <DataTemplate DataType="local:DashboardViewModel"><local:DashboardView /></DataTemplate>
+    <DataTemplate DataType="local:ModsViewModel"><local:ModsView /></DataTemplate>
+    <DataTemplate DataType="local:ConflictsViewModel"><local:ConflictsView /></DataTemplate>
+    <DataTemplate DataType="local:ConfigurationsViewModel"><local:ConfigurationsView /></DataTemplate>
+    <DataTemplate DataType="local:ProfilesViewModel"><local:ProfilesView /></DataTemplate>
+    <DataTemplate DataType="local:MigrationViewModel"><local:MigrationView /></DataTemplate>
+    <DataTemplate DataType="local:SupportViewModel"><local:SupportView /></DataTemplate>
+    <DataTemplate DataType="local:ModCleanupViewModel"><local:ModCleanupView /></DataTemplate>
+  </Application.DataTemplates>
+</Application>

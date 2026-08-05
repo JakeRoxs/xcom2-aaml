@@ -1,0 +1,25 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AAML.Avalonia/AAML.Avalonia.csproj" />
+    <Project Path="src/AAML.Domain/AAML.Domain.csproj" />
+    <Project Path="src/AAML.Application/AAML.Application.csproj" />
+    <Project Path="src/AAML.Infrastructure.Common/AAML.Infrastructure.Common.csproj" />
+    <Project Path="src/AAML.Infrastructure.Windows/AAML.Infrastructure.Windows.csproj" />
+    <Project Path="src/AAML.Infrastructure.Linux/AAML.Infrastructure.Linux.csproj" />
+    <Project Path="src/AAML.Infrastructure.Steam/AAML.Infrastructure.Steam.csproj" />
+    <Project Path="src/ThirdParty/Steamworks.NET/Steamworks.NET.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AAML.Domain.Tests/AAML.Domain.Tests.csproj" />
+    <Project Path="tests/AAML.Application.Tests/AAML.Application.Tests.csproj" />
+    <Project Path="tests/AAML.Avalonia.Tests/AAML.Avalonia.Tests.csproj" />
+    <Project Path="tests/AAML.Infrastructure.Common.CharacterizationTests/AAML.Infrastructure.Common.CharacterizationTests.csproj" />
+    <Project Path="tests/AAML.Infrastructure.Windows.Tests/AAML.Infrastructure.Windows.Tests.csproj" />
+    <Project Path="tests/AAML.Infrastructure.Linux.Tests/AAML.Infrastructure.Linux.Tests.csproj" />
+    <Project Path="tests/AAML.Infrastructure.Steam.Tests/AAML.Infrastructure.Steam.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/AAML.SteamProbe/AAML.SteamProbe.csproj" />
+    <Project Path="tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj" />
+  </Folder>
+</Solution>

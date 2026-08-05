@@ -1,6 +1,10 @@
-Attempt to upgrade AML to .net 10 and Avalonia UI for eventual Linux support specifically targeting Steam Deck
+# Avalonia Alternative Mod Launcher (WIP)
 
-Original description below
+The Avalonia Alternative Mod Launcher (AAML) is a replacement for the default game launchers from **XCOM 2** and **XCOM Chimera Squad**. Based on AML.
+
+AAML publishes self-contained .NET 10 and Avalonia builds for 64-bit Windows and native x64 Linux.
+
+## Legacy AML Description
 
 ![AML-Logo](https://user-images.githubusercontent.com/936992/64764499-79d3eb00-d542-11e9-8fb4-0698443a2233.png)
 
@@ -27,29 +31,29 @@ If you have any questions or suggestions regarding AML, you are welcome to join 
 
 - XCOM 2 (WotC) or XCOM Chimera Squad.
 - Steam has to be installed and running.
-- Microsoft [.NET Framework 4.7.2](https://dotnet.microsoft.com/download/dotnet-framework) or later.
-- 64-bit Windows.
+- 64-bit Windows or x64 Linux.
+- No separate .NET runtime installation is required by the self-contained packages.
 
 # Installation / Setup
 
-Please check the [installation instructions](https://github.com/X2CommunityCore/xcom2-launcher/wiki/Installation) and read how to [get started](https://github.com/X2CommunityCore/xcom2-launcher/wiki/Getting-started).
+Please check the [installation instructions](https://github.com/JakeRoxs/xcom2-dark-launcher/wiki/Installation) and read how to [get started](https://github.com/JakeRoxs/xcom2-dark-launcher/wiki/Getting-started).
 
 # Contributing
 
 As a community project, everyone is welcome to contribute. If you are willing to assist in developing and testing AML, please do not hesitate to contact any of the team members [on Discord](https://discord.gg/QHSVGRn) to get involved.
 
 - Reviewing and testing changes from pull requests.
-- Resolving open [issues](https://github.com/X2CommunityCore/xcom2-launcher/issues).
+- Resolving open [issues](https://github.com/JakeRoxs/xcom2-dark-launcher/issues).
 - Suggesting improvements and finding bugs.
-- Creating [wiki content](https://github.com/X2CommunityCore/xcom2-launcher/wiki) (tutorials/guides, common troubleshooting tips, etc)
+- Creating [wiki content](https://github.com/JakeRoxs/xcom2-dark-launcher/wiki) (tutorials/guides, common troubleshooting tips, etc)
 
 # License
 
-Released under [GPLv3](https://github.com/X2CommunityCore/xcom2-launcher/blob/master/LICENSE).
+Released under [GPLv3](https://github.com/JakeRoxs/xcom2-dark-launcher/blob/main/LICENSE).
 
 # Bug Reports
 
-If you encounter [issues](https://github.com/X2CommunityCore/xcom2-launcher/issues), please [consider reporting it](https://github.com/X2CommunityCore/xcom2-launcher/wiki/FAQ#how-and-where-do-i-report-a-bugissue).
+If you encounter [issues](https://github.com/JakeRoxs/xcom2-dark-launcher/issues), please [consider reporting it](https://github.com/JakeRoxs/xcom2-dark-launcher/wiki/FAQ#how-and-where-do-i-report-a-bugissue).
 
 # Credit
 

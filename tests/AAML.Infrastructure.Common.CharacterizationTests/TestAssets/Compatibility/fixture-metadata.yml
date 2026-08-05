@@ -1,0 +1,62 @@
+defaults:
+  provenance: repository-derived-synthetic
+  source_corpus: docs/compatibility
+  encoding: utf-8
+  bom: false
+  redistribution: synthetic-content-only
+  redactions:
+    - paths use C:\AML-Fixtures
+    - workshop identifiers use synthetic 900000000-series values
+    - telemetry identifiers are zeroed
+    - usernames and private notes are absent
+
+fixtures:
+  settings/current-xcom2.json:
+    source: Classes/Settings.cs and Classes/Mod/*.cs
+    line_endings: lf
+  settings/current-chimera.json:
+    source: Classes/Settings.cs and Classes/XCOM/XcomChimeraSquadEnv.cs
+    line_endings: lf
+  settings/historical-string-arguments.json:
+    source: Classes/Settings.cs obsolete Arguments migration
+    line_endings: lf
+  settings/historical-object-arguments.json:
+    source: Classes/Serialization/ModListConverter.cs
+    line_endings: lf
+  settings/global-opted-out.json:
+    source: Classes/GlobalSettings.cs
+    line_endings: lf
+  ini/vanilla-XComEngine.ini:
+    source: Classes/XCOM/*.cs
+    line_endings: crlf-compatible
+  ini/wotc-XComModOptions.ini:
+    source: Classes/XCOM/*.cs
+    line_endings: crlf-compatible
+  mods/manual/SyntheticMod/SyntheticMod.XComMod:
+    source: Classes/Mod/ModInfo.cs and ModList.cs
+    line_endings: crlf-compatible
+  mods/disabled/DisabledSynthetic.XComMod-disabled:
+    source: Classes/Mod/ModInfo.cs and ModList.cs
+    line_endings: crlf-compatible
+  profiles/grouped-current.txt:
+    source: Forms/MainForm.cs and MainForm.Events.cs
+    line_endings: crlf-compatible
+  profiles/ungrouped-current.txt:
+    source: Forms/MainForm.cs and MainForm.Events.cs
+    line_endings: crlf-compatible
+  http/github-release.json:
+    source: Classes/GitHub/*.cs
+    line_endings: lf
+  http/github-releases-empty.json:
+    source: Classes/GitHub/*.cs
+    line_endings: lf
+  http/steam-changelog.html:
+    source: Classes/Mod/ModChangelogCache.cs
+    line_endings: lf
+  resources/MainForm.ServiceColors.resx:
+    provenance: extracted-minimal-legacy-resource
+    source: xcom2-launcher/xcom2-launcher/Forms/MainForm.resx#modinfo_ConfigFCTB.ServiceColors
+    encoding: utf-8
+    bom: false
+    line_endings: lf
+    redistribution: repository-derived-test-fixture

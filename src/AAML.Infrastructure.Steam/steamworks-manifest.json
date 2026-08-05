@@ -1,0 +1,22 @@
+{
+  "steamworksSdkVersion": "1.64",
+  "sdkSource": "Valve Steamworks partner SDK downloaded directly by the repository owner; full SDK ignored under src/ThirdParty/steamsdk",
+  "sdkReleaseDate": "2026-03-11",
+  "steamworksNetSource": "https://github.com/rlabrecque/Steamworks.NET",
+  "steamworksNetCommit": "cde64110bff012829b59cc16fe2c4fc3a0371e8d",
+  "steamworksNetCommitDate": "2026-05-04",
+  "wrapperMode": "tracked Steamworks.NET runtime source compiled for net10.0; Valve SDK headers/tools remain ignored",
+  "nativeAssets": {
+    "win-x64": {
+      "file": "steam_api64.dll",
+      "size": 317080,
+      "sha256": "eb17909a76668cf9ae0b92a618a34a50f6c73d3a6787cb4dd8ce36a8b10bfb75"
+    },
+    "linux-x64": {
+      "file": "libsteam_api.so",
+      "size": 383432,
+      "sha256": "ec4797f76a206eb0af627af0f0788eb5a2eabf5dee38ee0a6affbaa44a645f4e"
+    }
+  },
+  "redistribution": "Native files are Valve Steamworks SDK redistributables and remain subject to the Steamworks SDK agreement. Steamworks.NET runtime source is MIT licensed."
+}

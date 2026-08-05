@@ -1,0 +1,48 @@
+name: AAML Live Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Live Steam probe platform
+        required: true
+        type: choice
+        options: [windows, linux]
+
+permissions:
+  contents: read
+
+jobs:
+  steam:
+    name: Live Steam probe (${{ inputs.platform }})
+    runs-on: ${{ inputs.platform == 'windows' && fromJSON('["self-hosted","Windows","X64","aaml-steam"]') || fromJSON('["self-hosted","Linux","X64","aaml-steam"]') }}
+    timeout-minutes: 10
+    environment: live-steam
+    env:
+      RID: ${{ inputs.platform == 'windows' && 'win-x64' || 'linux-x64' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
+      - run: dotnet restore tools/AAML.SteamProbe/AAML.SteamProbe.csproj --locked-mode
+      - if: inputs.platform == 'linux'
+        run: dotnet restore tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj --locked-mode
+      - name: Stage package
+        shell: pwsh
+        run: ./eng/stage-aaml-package.ps1 -Rid '${{ env.RID }}' -OutputDirectory '${{ runner.temp }}/AAML-Live-Package/${{ env.RID }}' -Version '0.0.0-live.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -VerifyTrackedSourceInputs
+      - name: Validate staged package
+        shell: pwsh
+        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML-Live-Package/${{ env.RID }}' -ManifestPath 'eng/package-manifests/aaml-${{ env.RID }}.json'
+      - if: inputs.platform == 'windows'
+        shell: pwsh
+        run: dotnet publish tools/AAML.SteamProbe/AAML.SteamProbe.csproj -c Release -r win-x64 --self-contained true --no-restore -p:DebugType=None -p:DebugSymbols=false -o '${{ runner.temp }}/AAML-Steam-Probe/win-x64'
+      - if: inputs.platform == 'windows'
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/AAML-Steam-Probe/win-x64
+        run: '& ./AAML.SteamProbe.exe'
+      - if: inputs.platform == 'linux'
+        shell: bash
+        working-directory: ${{ runner.temp }}/AAML-Live-Package/linux-x64
+        run: ./tools/steam-probe/AAML.SteamProbe

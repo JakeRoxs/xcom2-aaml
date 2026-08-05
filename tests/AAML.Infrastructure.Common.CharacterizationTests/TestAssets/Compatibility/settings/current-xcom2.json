@@ -1,0 +1,46 @@
+{
+  "GamePath": "C:\\AML-Fixtures\\Games\\XCOM 2",
+  "Game": 268500,
+  "ModPaths": [
+    "C:\\AML-Fixtures\\ManualMods\\",
+    "C:\\AML-Fixtures\\Steam\\steamapps\\workshop\\content\\268500\\"
+  ],
+  "ArgumentList": ["-review", "-noRedscreens", "-log"],
+  "Mods": {
+    "Entries": {
+      "Compatibility Fixtures": {
+        "Index": 0,
+        "Collapsed": false,
+        "Entries": [
+          {
+            "Index": 0,
+            "PreviousState": 0,
+            "ID": "SyntheticMod",
+            "Name": "Synthetic Mod",
+            "ManualName": true,
+            "Author": "Fixture Author",
+            "Description": "Synthetic redistributable description.",
+            "Path": "C:\\AML-Fixtures\\ManualMods\\SyntheticMod",
+            "Size": 1234,
+            "isActive": true,
+            "isHidden": false,
+            "Source": 4,
+            "WorkshopID": 900000001,
+            "DateAdded": "2024-01-02T03:04:05",
+            "DateCreated": "2024-01-01T03:04:05",
+            "DateUpdated": "2024-01-03T03:04:05",
+            "Note": "Synthetic fixture note.",
+            "Dependencies": [900000002],
+            "IgnoredDependencies": [900000003],
+            "SteamTags": ["Strategy", "Fix"],
+            "Settings": [{"FileName":"XComSynthetic.ini","FilePath":"Config/XComSynthetic.ini","Contents":"[Synthetic.Section]\r\nValue=Fixture\r\n"}],
+            "Tags": ["Stable", "Campaign"],
+            "BuiltForWOTC": true
+          }
+        ]
+      }
+    }
+  },
+  "Tags": {},
+  "Windows": {}
+}

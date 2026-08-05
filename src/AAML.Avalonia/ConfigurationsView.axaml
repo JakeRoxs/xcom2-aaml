@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" xmlns:edit="using:AvaloniaEdit" x:Class="AAML.Avalonia.ConfigurationsView" x:DataType="local:ConfigurationsViewModel" AutomationProperties.AutomationId="ConfigurationsPage">
+  <Grid Margin="24" RowDefinitions="Auto,8,Auto,8,3*,8,Auto,8,2*">
+    <StackPanel>
+      <TextBlock Classes="title" Text="Configurations" />
+      <TextBlock Classes="muted" Text="Edit mod INI files with atomic saves, external-change detection, snapshots, and recovery." />
+    </StackPanel>
+    <Grid Grid.Row="2" ColumnDefinitions="2*,Auto" ColumnSpacing="8">
+      <ComboBox ItemsSource="{Binding Documents}" SelectedItem="{Binding SelectedDocument, Mode=TwoWay}" PlaceholderText="Select a mod configuration">
+        <ComboBox.ItemTemplate>
+          <DataTemplate>
+            <StackPanel>
+              <TextBlock Text="{Binding ModName}" />
+              <TextBlock Classes="muted" FontSize="11" Text="{Binding RelativePath}" />
+            </StackPanel>
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+      <Button AutomationProperties.AutomationId="ConfigurationsOpenButton" Grid.Column="1" Command="{Binding Open}" Content="Open" />
+    </Grid>
+    <edit:TextEditor x:Name="ConfigurationEditor" AutomationProperties.AutomationId="ConfigurationsEditor" Grid.Row="4" ShowLineNumbers="True" WordWrap="False" FontFamily="Cascadia Code,Consolas,Menlo,Monospace" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
+    <WrapPanel Grid.Row="6" Orientation="Horizontal">
+      <Button Margin="0,0,6,6" Command="{Binding Save}" Content="Save atomically" />
+      <Button Margin="0,0,6,6" Command="{Binding Reload}" Content="Discard edits and reload" />
+      <Button Margin="0,0,6,6" Command="{Binding CaptureSnapshot}" Content="Capture snapshot" />
+      <Button Margin="0,0,6,6" Command="{Binding ApplySnapshot}" Content="Apply snapshot" />
+      <Button Margin="0,0,6,6" Command="{Binding DeleteSnapshot}" Content="Delete snapshot" />
+      <Button Margin="0,0,6,6" Command="{Binding ApplyRecovery}" Content="Load recovery" />
+      <Button Margin="0,0,6,6" Command="{Binding Compare}" Content="Compare" />
+      <Button Margin="0,0,6,6" Command="{Binding CancelCompare}" Content="Cancel diff" />
+      <Button AutomationProperties.AutomationId="ConfigurationsRefreshButton" Margin="0,0,6,6" Command="{Binding RefreshDocuments}" Content="Refresh files" />
+      <TextBlock Margin="8,0" VerticalAlignment="Center" Text="{Binding Format}" />
+      <TextBlock AutomationProperties.AutomationId="ConfigurationsStatus" Margin="8,0" VerticalAlignment="Center" Text="{Binding Status}" />
+    </WrapPanel>
+    <Grid Grid.Row="8" ColumnDefinitions="*,8,*">
+      <edit:TextEditor x:Name="LeftDiffEditor" IsReadOnly="True" ShowLineNumbers="True" WordWrap="False" FontFamily="Cascadia Code,Consolas,Menlo,Monospace" />
+      <edit:TextEditor x:Name="RightDiffEditor" Grid.Column="2" IsReadOnly="True" ShowLineNumbers="True" WordWrap="False" FontFamily="Cascadia Code,Consolas,Menlo,Monospace" />
+    </Grid>
+  </Grid>
+</UserControl>

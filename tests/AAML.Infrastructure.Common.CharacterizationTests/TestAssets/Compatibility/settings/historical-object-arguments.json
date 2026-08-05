@@ -1,0 +1,9 @@
+{
+  "GamePath": "C:\\AML-Fixtures\\Games\\XCOM 2",
+  "ConfigPath": "C:\\AML-Fixtures\\Documents\\my games\\XCOM2\\XComGame\\Config",
+  "SavePath": "C:\\AML-Fixtures\\Documents\\my games\\XCOM2\\XComGame\\SaveData",
+  "ModPaths": ["C:\\AML-Fixtures\\Workshop\\content\\268500\\"],
+  "Arguments": {"Review": true, "NoRedscreens": true},
+  "Mods": {"Unsorted": [{"ID":"LegacySynthetic","Name":"Legacy Synthetic","Path":"C:\\AML-Fixtures\\ManualMods\\LegacySynthetic","isActive":true}]},
+  "Windows": {}
+}

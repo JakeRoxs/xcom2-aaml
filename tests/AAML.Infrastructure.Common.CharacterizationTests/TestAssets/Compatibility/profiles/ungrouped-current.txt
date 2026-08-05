@@ -1,0 +1,2 @@
+Synthetic Mod A 	SyntheticA 	900000001 	Stable;Campaign
+Synthetic Mod B 	SyntheticB 	900000002 	Fix

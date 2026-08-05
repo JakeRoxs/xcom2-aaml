@@ -1,0 +1,133 @@
+{
+  "packages": [
+    {
+      "ids": [
+        "Zafiro",
+        "Zafiro.DivineBytes",
+        "Zafiro.FileSystem.Core",
+        "Zafiro.FileSystem.Mutable",
+        "Zafiro.UI"
+      ],
+      "version": "47.1.1",
+      "spdx": "MIT",
+      "repository": "https://github.com/SuperJMN/Zafiro",
+      "ref": "200acd2512022fd8ac77af4c5e25372ef208a20a",
+      "path": "LICENSE",
+      "localFiles": [
+        "eng/license-texts/zafiro-mit.txt"
+      ],
+      "secondaryNotices": [],
+      "notes": "The exact commit is recorded by the Zafiro 47.1.1 NuGet package. No matching 47.1.1 Git tag exists."
+    },
+    {
+      "ids": [
+        "Zafiro.Avalonia",
+        "Zafiro.Avalonia.Dialogs",
+        "Zafiro.Avalonia.Icons.Optris"
+      ],
+      "version": "53.3.0",
+      "spdx": "MIT",
+      "repository": "https://github.com/SuperJMN/Zafiro.Avalonia",
+      "ref": "daafa47a3d86f3d0cc3279873686ddd8e6af29bb",
+      "path": "LICENSE",
+      "localFiles": [
+        "eng/license-texts/zafiro-avalonia-mit.txt"
+      ],
+      "secondaryNotices": [],
+      "notes": "The exact commit is recorded by the Zafiro.Avalonia 53.3.0 NuGet package. No matching 53.3.0 Git tag exists."
+    },
+    {
+      "ids": [
+        "Optris.Icons.Avalonia"
+      ],
+      "version": "12.0.4",
+      "spdx": "MIT",
+      "repository": "https://github.com/Optris/Optris.Icons.Avalonia",
+      "ref": "v12.0.4",
+      "commit": "05c884d60f45f29caa4ebc40f24855a2906d54fa",
+      "path": "LICENSE",
+      "localFiles": [
+        "eng/license-texts/optris-icons-avalonia-mit.txt"
+      ],
+      "secondaryNotices": [],
+      "notes": "The annotated package source commit is the v12.0.4 tag object target used by NuGet metadata."
+    },
+    {
+      "ids": [
+        "Optris.Icons.Avalonia.FontAwesome"
+      ],
+      "version": "12.0.4",
+      "spdx": "MIT",
+      "repository": "https://github.com/Optris/Optris.Icons.Avalonia",
+      "ref": "v12.0.4",
+      "commit": "05c884d60f45f29caa4ebc40f24855a2906d54fa",
+      "path": "LICENSE",
+      "localFiles": [
+        "eng/license-texts/optris-icons-avalonia-mit.txt"
+      ],
+      "secondaryNotices": [
+        {
+          "name": "Font Awesome Free 6.7.2 icon metadata",
+          "spdx": "CC-BY-4.0",
+          "repository": "https://github.com/FortAwesome/Font-Awesome",
+          "ref": "6.7.2",
+          "commit": "af620534bfc3c2d4cbefcfeec29603bbe7809e64",
+          "path": "LICENSE.txt",
+          "localFile": "eng/license-texts/font-awesome-free-6.7.2-license.txt",
+          "notes": "Optris Assets/icons.json and Font Awesome 6.7.2 metadata/icons.json have the identical Git blob SHA a5da4a51b8ef497c4beef6fa614108df9610c25b. The bundled metadata contains icon SVG data; no Font Awesome font file is present in this NuGet package. The upstream notice also records trademark restrictions for brand icons."
+        }
+      ],
+      "notes": "The package's own code is MIT; bundled Font Awesome icon data requires the secondary attribution."
+    },
+    {
+      "ids": [
+        "Optris.Icons.Avalonia.MaterialDesign"
+      ],
+      "version": "12.0.4",
+      "spdx": "MIT",
+      "repository": "https://github.com/Optris/Optris.Icons.Avalonia",
+      "ref": "v12.0.4",
+      "commit": "05c884d60f45f29caa4ebc40f24855a2906d54fa",
+      "path": "LICENSE",
+      "localFiles": [
+        "eng/license-texts/optris-icons-avalonia-mit.txt"
+      ],
+      "secondaryNotices": [
+        {
+          "name": "Pictogrammers Material Design Icons snapshot",
+          "spdx": "Apache-2.0",
+          "repository": "https://github.com/Templarian/MaterialDesign-SVG",
+          "ref": "v7.0.96",
+          "commit": "c068ff53364a757c08fc0fd7c5d019bcd6a7a4ab",
+          "path": "LICENSE",
+          "localFile": "eng/license-texts/material-design-icons-7.0.96-license.txt",
+          "notes": "Optris imported the SVG set on 2022-07-24 after upstream v7.0.96 (2022-07-19). The upstream LICENSE says some icons may retain respective licenses, so Apache-2.0 is the collection-level declared SPDX value and not proof that every individual glyph originated under Apache-2.0."
+        }
+      ],
+      "notes": "The package's own code is MIT; bundled Material Design SVG-derived data requires the secondary collection notice."
+    },
+    {
+      "ids": [
+        "Xaml.Behaviors.Avalonia",
+        "Xaml.Behaviors.Interactions",
+        "Xaml.Behaviors.Interactions.Custom",
+        "Xaml.Behaviors.Interactions.DragAndDrop",
+        "Xaml.Behaviors.Interactions.Draggable",
+        "Xaml.Behaviors.Interactions.Events",
+        "Xaml.Behaviors.Interactions.Responsive",
+        "Xaml.Behaviors.Interactivity"
+      ],
+      "version": "12.0.0",
+      "spdx": "MIT",
+      "repository": "https://github.com/wieslawsoltes/Xaml.Behaviors",
+      "ref": "v12.0.0",
+      "commit": "5e2980e7c24ba78fe102e3c1440f70a46e0a564b",
+      "path": "LICENSE.TXT",
+      "localFiles": [
+        "eng/license-texts/xaml-behaviors-mit.txt"
+      ],
+      "secondaryNotices": [],
+      "notes": "The v12.0.0 tag and every 12.0.0 NuGet package identify the same exact commit."
+    }
+  ]
+}

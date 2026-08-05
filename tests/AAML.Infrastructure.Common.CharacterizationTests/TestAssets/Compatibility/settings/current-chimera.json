@@ -1,0 +1,9 @@
+{
+  "GamePath": "C:\\AML-Fixtures\\Games\\XCOM Chimera Squad",
+  "Game": 882100,
+  "ModPaths": ["C:\\AML-Fixtures\\Steam\\steamapps\\workshop\\content\\882100\\"],
+  "ArgumentList": ["-allowconsole", "-log"],
+  "Mods": {"Entries": {}},
+  "Tags": {},
+  "Windows": {}
+}

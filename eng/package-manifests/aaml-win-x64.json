@@ -1,0 +1,28 @@
+{
+  "rid": "win-x64",
+  "executable": "AAML.Avalonia.exe",
+  "executableFormat": "pe",
+  "required": [
+    "AAML.Avalonia.exe",
+    "AAML.Avalonia.dll",
+    "AAML.Avalonia.deps.json",
+    "AAML.Avalonia.runtimeconfig.json",
+    "hostfxr.dll",
+    "steam_api64.dll",
+    "release-metadata.json",
+    "steamworks-manifest.json",
+    "sbom.cdx.json",
+    "THIRD-PARTY-NOTICES.txt",
+    "licenses/Steamworks.NET-LICENSE.txt",
+    "licenses/AAML-GPL-3.0.txt"
+  ],
+  "forbiddenNative": ["libsteam_api.so", "steam_api.dll"],
+  "forbiddenManagedPrefixes": [
+    "AML.Domain",
+    "AML.Application",
+    "AML.Infrastructure.Common",
+    "AML.Infrastructure.Windows",
+    "AML.Infrastructure.Linux",
+    "AML.Infrastructure.Steam"
+  ]
+}

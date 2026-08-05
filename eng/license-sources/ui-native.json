@@ -1,0 +1,152 @@
+{
+  "description": "Authoritative license evidence for Avalonia, AvaloniaEdit, DataGrid, HarfBuzzSharp, and SkiaSharp packages. Entries establish evidence and do not assert that every RID/build package is shipped.",
+  "entries": [
+    {
+      "packageNames": [
+        "Avalonia",
+        "Avalonia.Controls.ColorPicker",
+        "Avalonia.Desktop",
+        "Avalonia.FreeDesktop",
+        "Avalonia.FreeDesktop.AtSpi",
+        "Avalonia.HarfBuzz",
+        "Avalonia.Native",
+        "Avalonia.Remote.Protocol",
+        "Avalonia.Skia",
+        "Avalonia.Themes.Fluent",
+        "Avalonia.Win32",
+        "Avalonia.X11"
+      ],
+      "version": "12.0.4",
+      "spdx": "MIT",
+      "repository": "https://github.com/AvaloniaUI/Avalonia",
+      "sourceRef": "12.0.4",
+      "sourceCommit": "a8dd6417fd8918570edefdbecd92d16ac7620069",
+      "sourcePath": "licence.md",
+      "localFiles": [
+        "eng/license-texts/avalonia-12.0.4-MIT.txt"
+      ],
+      "evidenceNotes": "The signed 12.0.4 tag resolves to the version commit. MIT requires preservation of the copyright and permission notice. Explicit names avoid accidentally covering separately licensed native/font packages or unrelated Avalonia-prefixed packages."
+    },
+    {
+      "packageNames": [
+        "Avalonia.BuildServices"
+      ],
+      "version": "11.3.2",
+      "spdx": "MIT",
+      "repository": "https://github.com/AvaloniaUI/Avalonia",
+      "sourceRef": "11.3.2",
+      "sourcePath": "licence.md",
+      "localFiles": [
+        "eng/license-texts/avalonia-12.0.4-MIT.txt"
+      ],
+      "evidenceNotes": "The authoritative 11.3.2 licence.md has Git blob 41951805ac6a5cdb91373db7725fbaa9c004d912, exactly identical to the deduplicated Avalonia MIT text retained for 12.0.4. This is a build-only package and mapping it does not assert that it ships."
+    },
+    {
+      "packageNames": [
+        "Avalonia.Fonts.Inter"
+      ],
+      "version": "12.0.4",
+      "spdx": "MIT AND OFL-1.1",
+      "repository": "https://github.com/AvaloniaUI/Avalonia",
+      "sourceRef": "12.0.4",
+      "sourceCommit": "a8dd6417fd8918570edefdbecd92d16ac7620069",
+      "sourcePath": "src/Avalonia.Fonts.Inter/Assets/*.ttf",
+      "additionalSources": [
+        {
+          "repository": "https://github.com/rsms/inter",
+          "sourceRef": "v4.1",
+          "sourcePath": "LICENSE.txt"
+        }
+      ],
+      "localFiles": [
+        "eng/license-texts/avalonia-12.0.4-MIT.txt",
+        "eng/license-texts/inter-v4.1-OFL-1.1.txt"
+      ],
+      "evidenceNotes": "Package code is Avalonia MIT and embeds Inter font binaries licensed OFL-1.1. OFL section 2 requires each redistributed copy to contain the copyright notice and license. The Avalonia source tag does not record the Inter release used; rsms/inter v4.1 supplies authoritative current OFL text, but no exact Inter source ref was established for the embedded font binaries."
+    },
+    {
+      "packageNames": [
+        "Avalonia.AvaloniaEdit"
+      ],
+      "version": "12.0.0",
+      "spdx": "MIT",
+      "repository": "https://github.com/AvaloniaUI/AvaloniaEdit",
+      "sourceRef": "12.0.0",
+      "sourceCommit": "86fdebec4cff7affb0e14c7885df71d28edce777",
+      "sourcePath": "LICENSE",
+      "localFiles": [
+        "eng/license-texts/avalonia-edit-12.0.0-MIT.txt"
+      ],
+      "evidenceNotes": "The 12.0.0 tag resolves to the package version commit. Preserve Eli Arbel's copyright and the MIT permission notice."
+    },
+    {
+      "packageNames": [
+        "Avalonia.Controls.DataGrid"
+      ],
+      "version": "12.0.0",
+      "spdx": "MIT",
+      "repository": "https://github.com/AvaloniaUI/Avalonia.Controls.DataGrid",
+      "sourceRef": "12.0.0",
+      "sourceCommit": "3d2cf024d6f15d4e770f655246185ad417f93f51",
+      "sourcePath": "licence.md",
+      "localFiles": [
+        "eng/license-texts/avalonia-datagrid-12.0.0-MIT.txt"
+      ],
+      "evidenceNotes": "The signed 12.0.0 tag resolves to the version commit. MIT requires preservation of the AvaloniaUI OU copyright and permission notice."
+    },
+    {
+      "packagePatterns": [
+        "HarfBuzzSharp",
+        "HarfBuzzSharp.NativeAssets.*"
+      ],
+      "version": "8.3.1.3",
+      "spdx": "MIT",
+      "repository": "https://github.com/mono/SkiaSharp",
+      "sourceRef": "v3.119.4",
+      "sourceCommit": "f568ac94dd768ef9a2f593537cfde2dd0d348ef5",
+      "sourcePath": "LICENSE.txt",
+      "additionalSources": [
+        {
+          "repository": "https://github.com/harfbuzz/harfbuzz",
+          "sourceRef": "8.3.1",
+          "sourcePath": "COPYING"
+        },
+        {
+          "repository": "https://github.com/mono/SkiaSharp",
+          "sourceRef": "v3.119.4",
+          "sourcePath": "External-Dependency-Info.txt"
+        }
+      ],
+      "localFiles": [
+        "eng/license-texts/skiasharp-3.119.4-MIT.txt",
+        "eng/license-texts/harfbuzz-8.3.1-COPYING.txt",
+        "eng/license-texts/skiasharp-3.119.4-THIRD-PARTY-NOTICES.txt"
+      ],
+      "evidenceNotes": "HarfBuzzSharp bindings are released from mono/SkiaSharp under MIT. NativeAssets package version 8.3.1.3 carries HarfBuzz 8.3.1; upstream cgmanifest.json at v3.119.4 identifies that native version. HarfBuzz's old-MIT text requires its copyright and license paragraphs in all copies. The release-tagged External-Dependency-Info.txt is the authoritative consolidated notice and must accompany redistributed native assets. Pattern matching establishes evidence only; it must not be interpreted as proof that Linux, macOS, WebAssembly, Win32, or other RID packages are present in a particular published artifact."
+    },
+    {
+      "packagePatterns": [
+        "SkiaSharp",
+        "SkiaSharp.NativeAssets.*"
+      ],
+      "version": "3.119.4",
+      "spdx": "MIT",
+      "repository": "https://github.com/mono/SkiaSharp",
+      "sourceRef": "v3.119.4",
+      "sourceCommit": "f568ac94dd768ef9a2f593537cfde2dd0d348ef5",
+      "sourcePath": "LICENSE.txt",
+      "additionalSources": [
+        {
+          "repository": "https://github.com/mono/SkiaSharp",
+          "sourceRef": "v3.119.4",
+          "sourcePath": "External-Dependency-Info.txt"
+        }
+      ],
+      "localFiles": [
+        "eng/license-texts/skiasharp-3.119.4-MIT.txt",
+        "eng/license-texts/skiasharp-3.119.4-THIRD-PARTY-NOTICES.txt"
+      ],
+      "evidenceNotes": "SkiaSharp's managed binding is MIT. NativeAssets binaries incorporate Skia and third-party material with additional licenses and attribution conditions enumerated verbatim in External-Dependency-Info.txt; the notice is required evidence in addition to the package-level MIT text. The v3.119.4 tag pins mono/skia commit 330baf49f60f4354d6e3fdb6ce526c08926c7c37 in cgmanifest.json. Pattern matching establishes evidence only and must not mark wrong-RID/build packages as shipped."
+    }
+  ]
+}
