@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" xmlns:edit="using:AvaloniaEdit" x:Class="AAML.Avalonia.ConfigurationsView" x:DataType="local:ConfigurationsViewModel" AutomationProperties.AutomationId="ConfigurationsPage">
-  <Grid Margin="24" RowDefinitions="Auto,8,Auto,8,3*,8,Auto,8,2*">
+  <Grid Margin="24,12,24,24" RowDefinitions="Auto,8,Auto,8,3*,8,Auto,8,2*">
     <StackPanel>
       <TextBlock Classes="title" Text="Configurations" />
       <TextBlock Classes="muted" Text="Edit mod INI files with atomic saves, external-change detection, snapshots, and recovery." />

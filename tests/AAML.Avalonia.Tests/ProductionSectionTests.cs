@@ -1,21 +1,22 @@
 using System.Reflection;
 using System.Reactive.Linq;
-using Avalonia;
-using Avalonia.Headless;
 using CSharpFunctionalExtensions;
 using FluentAssertions;
 using Moq;
 using ReactiveUI;
-using ReactiveUI.Avalonia;
 using AAML.Application;
 using AAML.Application.Diagnostics;
 using AAML.Application.Ports;
+using AAML.Application.Settings;
 
 namespace AAML.Avalonia.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public sealed class ProductionSectionTests
 {
+    public TestContext TestContext { get; set; }
+
     private static readonly Type[] ViewModelTypes =
     [
         typeof(DashboardViewModel), typeof(ModsViewModel), typeof(ConflictsViewModel),
@@ -28,12 +29,6 @@ public sealed class ProductionSectionTests
         typeof(DashboardView), typeof(ModsView), typeof(ConflictsView), typeof(ConfigurationsView),
         typeof(ProfilesView), typeof(MigrationView), typeof(SupportView), typeof(ModCleanupView)
     ];
-
-    [ClassInitialize]
-    public static void InitializeAvalonia(TestContext _)
-    {
-        AppBuilder.Configure<App>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).UseReactiveUI(_ => { }).SetupWithoutStarting();
-    }
 
     [TestMethod]
     public void SectionsHaveUniqueRoutesAndContiguousOrders()
@@ -48,13 +43,16 @@ public sealed class ProductionSectionTests
     }
 
     [TestMethod]
-    public void EveryRegisteredViewConstructsAndLoadsItsAxaml()
+    public async Task EveryRegisteredViewConstructsAndLoadsItsAxaml()
     {
-        foreach (var viewType in ViewTypes)
+        await AvaloniaTestHost.Session.Dispatch(() =>
         {
-            var view = Activator.CreateInstance(viewType);
-            view.Should().NotBeNull($"{viewType.Name} must load its production AXAML");
-        }
+            foreach (var viewType in ViewTypes)
+            {
+                var view = Activator.CreateInstance(viewType);
+                view.Should().NotBeNull($"{viewType.Name} must load its production AXAML");
+            }
+        }, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -118,6 +116,18 @@ public sealed class ProductionSectionTests
         (await Execute(profiles.Create)).IsFailure.Should().BeTrue();
         dashboard.GameInstallationPath = "";
         (await Execute(dashboard.SaveInstallation)).IsFailure.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void DashboardOffersEveryCurrentWorkshopPolicyWithAllModsFirstAsDefault()
+    {
+        var dashboard = (DashboardViewModel)CreateViewModel(typeof(DashboardViewModel));
+
+        dashboard.WorkshopStartupRefreshOptions.Should().Equal(
+            WorkshopStartupRefreshPolicy.AllMods,
+            WorkshopStartupRefreshPolicy.ActiveMods,
+            WorkshopStartupRefreshPolicy.Manual);
+        dashboard.WorkshopStartupRefresh.Should().Be(WorkshopStartupRefreshPolicy.AllMods);
     }
 
     [TestMethod]

@@ -25,7 +25,9 @@ public sealed record ApplicationSettings(
     ModGridPreferences? ModGrid = null,
     IReadOnlyList<RetainedWorkshopItem>? RetainedWorkshopItems = null,
     bool CheckForUpdates = true,
-    UpdateChannelPreference UpdateChannel = UpdateChannelPreference.Stable)
+    UpdateChannelPreference UpdateChannel = UpdateChannelPreference.Stable,
+    NavigationRailMode NavigationRailMode = NavigationRailMode.Expanded,
+    bool AutoSaveChanges = false)
 {
     public GameLocationSettings LocationFor(GameVariant variant)
     {
@@ -38,6 +40,7 @@ public sealed record GameLocationSettings(string? InstallationLocation, IReadOnl
 public enum WorkshopStartupRefreshPolicy { Manual, ActiveMods, AllMods }
 public enum ThemePreference { System, Light, Dark }
 public enum UpdateChannelPreference { Stable, Prerelease, Alpha }
+public enum NavigationRailMode { Expanded, Compact }
 public sealed record ModGridPreferences(bool IncludeHidden, ModGridSemanticState? StateFilter, bool GroupByCategory, IReadOnlySet<ModGridGroupKey> CollapsedGroups)
 {
     public static ModGridPreferences Default { get; } = new(true, null, false, new HashSet<ModGridGroupKey>());

@@ -14,6 +14,7 @@ public sealed partial class ModsView : UserControl
     public ModsView()
     {
         InitializeComponent();
+        AttachedToVisualTree += (_, _) => (DataContext as ModsViewModel)?.Activate();
     }
 
     protected override void OnDataContextChanged(EventArgs e)

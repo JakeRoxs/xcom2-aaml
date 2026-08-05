@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 2,
+  "selectedGame": "XCom2",
+  "gameInstallationLocation": "C:\\Games\\XCOM2",
+  "modRootLocations": ["C:\\Mods"],
+  "launchArguments": ["-log"],
+  "modIntents": [], "categories": [], "tags": [],
+  "allowLaunchWithMissingDependencies": true
+}

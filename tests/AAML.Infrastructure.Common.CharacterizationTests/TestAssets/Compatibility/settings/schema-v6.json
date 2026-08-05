@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 6,
+  "selectedGame": "XCom2", "gameInstallationLocation": null, "modRootLocations": [],
+  "launchArguments": [], "modIntents": [], "categories": [], "tags": [],
+  "allowLaunchWithMissingDependencies": false,
+  "gameLocations": [{"game":"XCom2","installationLocation":null,"modRootLocations":[]}],
+  "closeAfterLaunch": false, "workshopStartupRefresh": "Never", "theme": "System", "allowMultipleInstances": false,
+  "duplicatePreferences": [],
+  "modGrid": {"stateFilter":"Duplicate","groupByCategory":true,"collapsedGroups":[]},
+  "retainedWorkshopItems": [], "checkForUpdates":false, "updateChannel":"Prerelease"
+}

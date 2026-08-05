@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "selectedGame": "XCom2",
+  "gameInstallationLocation": "C:\\Games\\XCOM2",
+  "modRootLocations": ["C:\\Mods"],
+  "launchArguments": [],
+  "modIntents": [{"source":"Manual","locationIdentity":"C:\\Mods\\Alpha","isActive":true,"isHidden":true,"explicitOrder":3,"manualName":"Alpha Custom","categoryId":"strategy","tagIds":["favorite"],"note":"keep","ignoredDependencies":[123]}],
+  "categories": [{"id":"strategy","name":"Strategy","order":2}],
+  "tags": [{"id":"favorite","name":"Favorite","color":"#123456"}]
+}

@@ -3,25 +3,73 @@
              xmlns:shell="clr-namespace:Zafiro.UI.Shell;assembly=Zafiro.UI"
              xmlns:zac="clr-namespace:Zafiro.Avalonia.Controls;assembly=Zafiro.Avalonia"
              xmlns:nav="clr-namespace:Zafiro.Avalonia.Controls.Navigation;assembly=Zafiro.Avalonia"
+             xmlns:sections="clr-namespace:Zafiro.UI.Navigation.Sections;assembly=Zafiro.UI"
              xmlns:local="using:AAML.Avalonia"
              x:Class="AAML.Avalonia.AamlShellView"
              x:DataType="shell:IHierarchicalShell">
+  <UserControl.Resources>
+    <DataTemplate x:Key="ShellRailItemTemplate" DataType="sections:ISection">
+      <StackPanel Classes="shell-rail-item" MinHeight="52" Orientation="Horizontal" Spacing="10" ToolTip.Tip="{Binding FriendlyName}">
+        <Viewbox Width="32" Height="32" VerticalAlignment="Center">
+          <ContentControl Content="{Binding Icon}" />
+        </Viewbox>
+        <TextBlock IsVisible="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"
+                   Text="{Binding FriendlyName}" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.Resources>
+  <UserControl.Styles>
+    <Style Selector="Border.shell-rail">
+      <Setter Property="Width" Value="200" />
+    </Style>
+    <Style Selector="Border.shell-rail.compact">
+      <Setter Property="Width" Value="60" />
+    </Style>
+    <Style Selector="Border.shell-rail StackPanel.shell-rail-item">
+      <Setter Property="Margin" Value="10,2" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Border.shell-rail.compact StackPanel.shell-rail-item">
+      <Setter Property="Margin" Value="2" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
   <Grid ColumnDefinitions="Auto,*">
-    <Border IsVisible="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}">
-      <zac:SectionStrip Orientation="Vertical"
-                        Sections="{Binding RootLevel.Sections}"
-                        SelectedSection="{Binding RootLevel.SelectedSection.Value, Mode=TwoWay}" />
+    <Border Classes="shell-rail"
+            Classes.compact="{Binding !IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}">
+      <Grid RowDefinitions="*,Auto">
+        <zac:SectionStrip Orientation="Vertical"
+                          ItemTemplate="{StaticResource ShellRailItemTemplate}"
+                          IconSize="32"
+                          ItemPadding="4,8"
+                          ItemSpacing="2"
+                          Padding="2"
+                          Sections="{Binding RootLevel.Sections}"
+                          SelectedSection="{Binding RootLevel.SelectedSection.Value, Mode=TwoWay}" />
+        <Panel Grid.Row="1">
+          <ToggleButton AutomationProperties.AutomationId="ShellRailCollapseButton"
+                        AutomationProperties.Name="Collapse navigation"
+                        Margin="8"
+                        HorizontalAlignment="Left"
+                        IsVisible="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+                        IsChecked="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}, Mode=TwoWay}"
+                        Content="☰"
+                        ToolTip.Tip="Switch to icon-only navigation" />
+          <ToggleButton AutomationProperties.AutomationId="ShellRailExpandButton"
+                        AutomationProperties.Name="Expand navigation"
+                        Margin="8"
+                        HorizontalAlignment="Center"
+                        IsVisible="{Binding !IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+                        IsChecked="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}, Mode=TwoWay}"
+                        Content="☰"
+                        ToolTip.Tip="Show navigation labels" />
+        </Panel>
+      </Grid>
     </Border>
 
     <Grid Grid.Column="1" RowDefinitions="Auto,*">
-      <ToggleButton AutomationProperties.AutomationId="ShellRailToggle"
-                    Margin="8"
-                    HorizontalAlignment="Left"
-                    IsChecked="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}, Mode=TwoWay}"
-                    Content="☰"
-                    ToolTip.Tip="Show or hide navigation" />
-
-      <Grid Grid.Row="1" RowDefinitions="Auto,*">
         <ItemsControl ItemsSource="{Binding ChildLevels.Value}">
           <ItemsControl.ItemTemplate>
             <DataTemplate DataType="shell:SectionLevel">
@@ -33,13 +81,15 @@
         </ItemsControl>
 
         <Frame Grid.Row="1"
+               HeaderPadding="0"
+               Padding="0"
                Content="{Binding SelectedSection.Value.Navigator.Content^}"
                BackCommand="{Binding SelectedSection.Value.Navigator.Back}">
           <Interaction.Behaviors>
             <nav:AutoHeaderFooterBehavior />
           </Interaction.Behaviors>
         </Frame>
-      </Grid>
+
     </Grid>
   </Grid>
 </UserControl>

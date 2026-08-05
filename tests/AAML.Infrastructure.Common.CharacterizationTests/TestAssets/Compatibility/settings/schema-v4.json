@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 4,
+  "selectedGame": "XCom2", "gameInstallationLocation": null, "modRootLocations": [],
+  "launchArguments": [], "modIntents": [], "categories": [], "tags": [],
+  "allowLaunchWithMissingDependencies": false,
+  "gameLocations": [{"game":"XCom2","installationLocation":null,"modRootLocations":[]}],
+  "closeAfterLaunch": false, "workshopStartupRefresh": "ActiveMods", "theme": "Light", "allowMultipleInstances": false,
+  "duplicatePreferences": [{"packageId":"Shared.Package","source":"SteamWorkshop","locationIdentity":"123"}]
+}

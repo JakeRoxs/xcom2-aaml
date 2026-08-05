@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" x:Class="AAML.Avalonia.ProfilesView" x:DataType="local:ProfilesViewModel" AutomationProperties.AutomationId="ProfilesPage">
-  <Grid Margin="24" RowDefinitions="Auto,10,Auto,10,Auto,10,*">
+  <Grid Margin="24,12,24,24" RowDefinitions="Auto,10,Auto,10,Auto,10,*">
     <StackPanel>
       <TextBlock Classes="title" Text="Profiles" />
       <TextBlock Classes="muted" Text="Portable snapshots of game mode, active mods, load order, and launch arguments." />

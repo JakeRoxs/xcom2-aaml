@@ -10,4 +10,7 @@
     <ProjectReference Include="../AAML.Application/AAML.Application.csproj" />
     <ProjectReference Include="../AAML.Domain/AAML.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AAML.Infrastructure.Common.CharacterizationTests" />
+  </ItemGroup>
 </Project>

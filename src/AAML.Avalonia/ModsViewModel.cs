@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CSharpFunctionalExtensions;
 using ReactiveUI;
 using AAML.Domain.Mods;
@@ -44,6 +45,7 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
     private bool confirmRemoveRetainedIntent;
     private bool confirmManualDeletion;
     private bool isInspectorVisible = true;
+    private bool gridPreferencesLoaded;
 
     private readonly IExternalLauncher externalLauncher;
 
@@ -51,25 +53,8 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
     {
         this.session = session;
         this.externalLauncher = externalLauncher;
-        session.PropertyChanged += (_, args) =>
-        {
-            this.RaisePropertyChanged(nameof(Status));
-            if (args.PropertyName is nameof(ApplicationSession.UnsavedModDraftCount) or nameof(ApplicationSession.HasUnsavedModDrafts)) { this.RaisePropertyChanged(nameof(UnsavedModDraftCount)); this.RaisePropertyChanged(nameof(HasUnsaved)); }
-            if (args.PropertyName == nameof(ApplicationSession.Settings)) { RefreshTaxonomy(); var grid = session.Settings?.ModGrid ?? ModGridPreferences.Default; includeHidden = grid.IncludeHidden; selectedStateFilter = StateFilters.FirstOrDefault(option => option.State == grid.StateFilter); groupByCategory = grid.GroupByCategory; this.RaisePropertyChanged(nameof(IncludeHidden)); this.RaisePropertyChanged(nameof(SelectedStateFilter)); this.RaisePropertyChanged(nameof(GroupByCategory)); }
-            if (args.PropertyName == nameof(ApplicationSession.HasFocusedMods)) this.RaisePropertyChanged(nameof(HasFocusedMods));
-            if (args.PropertyName is nameof(ApplicationSession.IsWorkshopBusy) or nameof(ApplicationSession.WorkshopAvailability))
-            {
-                this.RaisePropertyChanged(nameof(IsWorkshopBusy));
-                this.RaisePropertyChanged(nameof(WorkshopAvailability));
-                this.RaisePropertyChanged(nameof(WorkshopConnectionDisplay));
-                this.RaisePropertyChanged(nameof(CanRefreshWorkshop));
-                if (session.WorkshopAvailability.State == WorkshopConnectionState.Connected)
-                    WorkshopSummary = $"Workshop state checked {session.WorkshopAvailability.LastCheckedAt?.LocalDateTime:g}";
-                else if (session.WorkshopAvailability.State == WorkshopConnectionState.Unavailable)
-                    WorkshopSummary = session.WorkshopAvailability.Error ?? "Workshop state check failed";
-                RaiseSelectionCommandState();
-            }
-        };
+        LoadGridPreferences();
+        session.PropertyChanged += OnSessionPropertyChanged;
         Refresh = ReactiveCommand.CreateFromTask(async () => (await session.RefreshModsAsync(CancellationToken.None)).IsSuccess ? Result.Success() : Result.Failure(session.Status)).Enhance(text: "Refresh mods", name: "RefreshMods");
         Save = ReactiveCommand.CreateFromTask(async () => (await session.SaveModDraftsAsync(CancellationToken.None)).IsSuccess ? Result.Success() : Result.Failure(session.Status)).Enhance(text: "Save mod state", name: "SaveModState");
         SaveMetadata = ReactiveCommand.CreateFromTask(SaveMetadataAsync).Enhance(text: "Save metadata", name: "SaveMetadata");
@@ -78,18 +63,18 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
         BulkRemoveTags = ReactiveCommand.CreateFromTask(BulkRemoveTagsAsync).Enhance(text: "Remove tags", name: "BulkRemoveTags");
         ClearCategory = ReactiveCommand.Create(() => { SelectedCategory = null; return Result.Success(); }).Enhance(text: "Clear category", name: "ClearCategory");
         ClearFocusedMods = ReactiveCommand.Create(() => { session.ClearFocusedMods(); return Result.Success(); }).Enhance(text: "Clear conflict filter", name: "ClearFocusedMods");
-        DiscardActivation = ReactiveCommand.Create(() => { session.DiscardModDrafts(); return Result.Success(); }).Enhance(text: "Discard activation edits", name: "DiscardActivation");
+        DiscardActivation = ReactiveCommand.Create(() => { session.CancelAutoSaveOwner("mods"); session.DiscardModDrafts(); return Result.Success(); }).Enhance(text: "Discard activation edits", name: "DiscardActivation");
         RefreshWorkshop = ReactiveCommand.CreateFromTask(RefreshWorkshopAsync).Enhance(text: "Refresh Workshop", name: "RefreshWorkshop");
         UpdateSelected = ReactiveCommand.CreateFromTask(UpdateSelectedAsync).Enhance(text: "Update selected", name: "UpdateSelectedMods");
         StopMonitoring = ReactiveCommand.Create(() => { workshopCancellation?.Cancel(); return Result.Success(); }).Enhance(text: "Stop monitoring", name: "StopWorkshopMonitoring");
         PreferDuplicate = ReactiveCommand.CreateFromTask(async () => SelectedRow?.Key is { } key ? ToCommand(await session.PreferDuplicateAsync(key, CancellationToken.None)) : Result.Failure("Select a mod.")).Enhance(text: "Prefer installation", name: "PreferDuplicate");
         ClearDuplicatePreference = ReactiveCommand.CreateFromTask(async () => SelectedRow?.Key is { } key ? ToCommand(await session.ClearDuplicatePreferenceAsync(key, CancellationToken.None)) : Result.Failure("Select a mod.")).Enhance(text: "Clear duplicate preference", name: "ClearDuplicatePreference");
         ShowDuplicateGroup = ReactiveCommand.Create(() => SelectedRow?.Key is { } key ? ToCommand(session.FocusDuplicateGroup(key)) : Result.Failure("Select a mod.")).Enhance(text: "Show duplicate group", name: "ShowDuplicateGroup");
-        ActivateSelected = ReactiveCommand.Create(() => ToCommand(session.SetSelectedActive(selectedKeys, true))).Enhance(text: "Activate selected", name: "ActivateSelected");
-        DeactivateSelected = ReactiveCommand.Create(() => ToCommand(session.SetSelectedActive(selectedKeys, false))).Enhance(text: "Deactivate selected", name: "DeactivateSelected");
-        MoveUp = ReactiveCommand.Create(() => { session.MoveSelected(selectedKeys, -1); return Result.Success(); }).Enhance(text: "Move up", name: "MoveSelectedUp");
-        MoveDown = ReactiveCommand.Create(() => { session.MoveSelected(selectedKeys, 1); return Result.Success(); }).Enhance(text: "Move down", name: "MoveSelectedDown");
-        Renumber = ReactiveCommand.Create(() => { session.RenumberMods(); return Result.Success(); }).Enhance(text: "Renumber", name: "RenumberMods");
+        ActivateSelected = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.SetSelectedActiveAndSaveAsync(selectedKeys, true, CancellationToken.None))).Enhance(text: "Activate selected", name: "ActivateSelected");
+        DeactivateSelected = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.SetSelectedActiveAndSaveAsync(selectedKeys, false, CancellationToken.None))).Enhance(text: "Deactivate selected", name: "DeactivateSelected");
+        MoveUp = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.MoveSelectedAndSaveAsync(selectedKeys, -1, CancellationToken.None))).Enhance(text: "Move up", name: "MoveSelectedUp");
+        MoveDown = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.MoveSelectedAndSaveAsync(selectedKeys, 1, CancellationToken.None))).Enhance(text: "Move down", name: "MoveSelectedDown");
+        Renumber = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.RenumberModsAndSaveAsync(CancellationToken.None))).Enhance(text: "Renumber", name: "RenumberMods");
         HideSelected = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.SetHiddenAsync(selectedKeys, true, CancellationToken.None))).Enhance(text: "Hide selected", name: "HideSelected");
         UnhideSelected = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.SetHiddenAsync(selectedKeys, false, CancellationToken.None))).Enhance(text: "Unhide selected", name: "UnhideSelected");
         LoadDependencies = ReactiveCommand.CreateFromTask(LoadDependenciesAsync).Enhance(text: "Load dependencies", name: "LoadDependencies");
@@ -126,6 +111,7 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
     public string Status => session.Status;
     public int UnsavedModDraftCount => session.UnsavedModDraftCount;
     public bool HasUnsaved => session.HasUnsavedModDrafts;
+    public string AutoSaveStatus => session.Settings?.AutoSaveChanges == true ? "Auto-save on" : "Auto-save off";
     public IEnhancedCommand<Result> Refresh { get; }
     public IEnhancedCommand<Result> Save { get; }
     public IEnhancedCommand<Result> SaveMetadata { get; }
@@ -210,8 +196,8 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
             this.RaisePropertyChanged(nameof(CanConfirmRemoval));
         }
     }
-    public bool IncludeHidden { get => includeHidden; set { this.RaiseAndSetIfChanged(ref includeHidden, value); ApplyFilter(); } }
-    public StateFilterOption? SelectedStateFilter { get => selectedStateFilter; set { this.RaiseAndSetIfChanged(ref selectedStateFilter, value); ApplyFilter(); } }
+    public bool IncludeHidden { get => includeHidden; set { if (includeHidden == value) return; this.RaiseAndSetIfChanged(ref includeHidden, value); ApplyFilter(); } }
+    public StateFilterOption? SelectedStateFilter { get => selectedStateFilter; set { if (selectedStateFilter == value) return; this.RaiseAndSetIfChanged(ref selectedStateFilter, value); ApplyFilter(); } }
     public IReadOnlyList<StateFilterOption> StateFilters { get; } = [new("All states", null), .. Enum.GetValues<ModGridSemanticState>().Select(state => new StateFilterOption(state.ToString(), state))];
     public IEnhancedCommand<Result> CreateCategory { get; }
     public IEnhancedCommand<Result> RenameCategory { get; }
@@ -241,8 +227,10 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
     public bool GroupByCategory
     {
         get => groupByCategory;
-        set { this.RaiseAndSetIfChanged(ref groupByCategory, value); session.ProjectMods(SearchText, value); }
+        set { if (groupByCategory == value) return; this.RaiseAndSetIfChanged(ref groupByCategory, value); session.SetModGrouping(value); }
     }
+
+    public void Activate() => session.ActivateAutoSaveOwner("mods");
 
     public void SetSelection(IEnumerable<SessionModRow> rows)
     {
@@ -283,6 +271,29 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
         var result = await session.SaveMetadataAsync(new SessionModMetadata(key, ManualName, Note, IsHidden, SelectedCategory?.Id, parsed.Value!), CancellationToken.None);
         if (result.IsSuccess) LoadSelectedMetadata();
         return ToCommand(result);
+    }
+
+    private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        this.RaisePropertyChanged(nameof(Status));
+        if (args.PropertyName is nameof(ApplicationSession.UnsavedModDraftCount) or nameof(ApplicationSession.HasUnsavedModDrafts)) { this.RaisePropertyChanged(nameof(UnsavedModDraftCount)); this.RaisePropertyChanged(nameof(HasUnsaved)); }
+        if (args.PropertyName == nameof(ApplicationSession.Settings))
+        {
+            RefreshTaxonomy();
+            if (!gridPreferencesLoaded) LoadGridPreferences();
+            this.RaisePropertyChanged(nameof(AutoSaveStatus));
+        }
+        if (args.PropertyName == nameof(ApplicationSession.HasFocusedMods)) this.RaisePropertyChanged(nameof(HasFocusedMods));
+        if (args.PropertyName is not (nameof(ApplicationSession.IsWorkshopBusy) or nameof(ApplicationSession.WorkshopAvailability))) return;
+        this.RaisePropertyChanged(nameof(IsWorkshopBusy));
+        this.RaisePropertyChanged(nameof(WorkshopAvailability));
+        this.RaisePropertyChanged(nameof(WorkshopConnectionDisplay));
+        this.RaisePropertyChanged(nameof(CanRefreshWorkshop));
+        if (session.WorkshopAvailability.State == WorkshopConnectionState.Connected)
+            WorkshopSummary = $"Workshop state checked {session.WorkshopAvailability.LastCheckedAt?.LocalDateTime:g}";
+        else if (session.WorkshopAvailability.State == WorkshopConnectionState.Unavailable)
+            WorkshopSummary = session.WorkshopAvailability.Error ?? "Workshop state check failed";
+        RaiseSelectionCommandState();
     }
 
     private async Task<Result> BulkTagsAsync()
@@ -409,6 +420,19 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
         foreach (var tag in session.Tags.OrderBy(tag => tag.Name, StringComparer.OrdinalIgnoreCase)) Tags.Add(tag);
     }
 
+    private void LoadGridPreferences()
+    {
+        if (session.Settings is null) return;
+        var grid = session.Settings.ModGrid ?? ModGridPreferences.Default;
+        includeHidden = grid.IncludeHidden;
+        selectedStateFilter = StateFilters.FirstOrDefault(option => option.State == grid.StateFilter);
+        groupByCategory = grid.GroupByCategory;
+        gridPreferencesLoaded = true;
+        this.RaisePropertyChanged(nameof(IncludeHidden));
+        this.RaisePropertyChanged(nameof(SelectedStateFilter));
+        this.RaisePropertyChanged(nameof(GroupByCategory));
+    }
+
     private CSharpFunctionalExtensions.Result<HashSet<TagId>, string> ParseTags()
     {
         var names = TagNames.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -430,7 +454,7 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
     }
     private static Result ToCommand(AAML.Application.Common.Result result) => result.IsSuccess ? Result.Success() : Result.Failure(result.Error!.Message);
     private static Result ToCommand<T>(AAML.Application.Common.Result<T> result) => result.IsSuccess ? Result.Success() : Result.Failure(result.Error!.Message);
-    public void Dispose() { workshopCancellation?.Cancel(); workshopCancellation?.Dispose(); selectedDetailsCancellation?.Cancel(); selectedDetailsCancellation?.Dispose(); }
+    public void Dispose() { session.PropertyChanged -= OnSessionPropertyChanged; session.CancelAutoSaveOwner("mods"); workshopCancellation?.Cancel(); workshopCancellation?.Dispose(); selectedDetailsCancellation?.Cancel(); selectedDetailsCancellation?.Dispose(); }
 }
 
 public sealed record StateFilterOption(string Name, ModGridSemanticState? State);

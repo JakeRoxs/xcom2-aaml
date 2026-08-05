@@ -1,28 +1,30 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" x:Class="AAML.Avalonia.DashboardView" x:DataType="local:DashboardViewModel" AutomationProperties.AutomationId="DashboardPage">
   <ScrollViewer>
-    <StackPanel Margin="28" MaxWidth="900" HorizontalAlignment="Left" Spacing="14">
+    <StackPanel Margin="28,12,28,28" MaxWidth="900" HorizontalAlignment="Left" Spacing="14">
       <StackPanel>
         <TextBlock Classes="title" Text="Avalonia Alternative Mod Launcher" />
         <TextBlock Classes="muted" Text="Game-scoped paths, launch preferences, and explicit configuration controls." />
       </StackPanel>
-      <Grid ColumnDefinitions="150,620" RowDefinitions="Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto">
+      <Grid ColumnDefinitions="150,620" RowDefinitions="Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto">
         <TextBlock Text="Settings" /><TextBlock Grid.Column="1" Text="{Binding Origin}" />
         <TextBlock Grid.Row="2" Text="Selected game" />
         <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="8"><ComboBox Width="250" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}" /><Button Command="{Binding SaveGame}" Content="Switch game" /></StackPanel>
         <TextBlock Grid.Row="4" Text="Game path" />
         <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="8"><TextBox AutomationProperties.AutomationId="DashboardGamePathTextBox" Width="390" Text="{Binding GameInstallationPath}" PlaceholderText="Selected game installation directory" /><Button Command="{Binding SaveInstallation}" Content="Save path" /><Button AutomationProperties.AutomationId="DashboardDetectSteamButton" Command="{Binding DetectSteam}" Content="Detect Steam" /></StackPanel>
         <TextBlock Grid.Row="6" Text="Manual/mod roots" />
-        <TextBox Grid.Row="6" Grid.Column="1" MinHeight="72" AcceptsReturn="True" Text="{Binding ModRoots}" PlaceholderText="One existing directory per line" />
+        <TextBox Grid.Row="6" Grid.Column="1" MinHeight="72" AcceptsReturn="True" Text="{Binding ModRoots, UpdateSourceTrigger=PropertyChanged}" TextChanged="OnModRootsChanged" PlaceholderText="One existing directory per line" />
         <TextBlock Grid.Row="8" Text="Launch arguments" />
-        <TextBox AutomationProperties.AutomationId="DashboardLaunchArgumentsTextBox" Grid.Row="8" Grid.Column="1" MinHeight="96" AcceptsReturn="True" Text="{Binding LaunchArguments}" PlaceholderText="One structured argument per line" />
+        <TextBox AutomationProperties.AutomationId="DashboardLaunchArgumentsTextBox" Grid.Row="8" Grid.Column="1" MinHeight="96" AcceptsReturn="True" Text="{Binding LaunchArguments, UpdateSourceTrigger=PropertyChanged}" TextChanged="OnLaunchArgumentsChanged" PlaceholderText="One structured argument per line" />
         <TextBlock Grid.Row="10" Text="Launch behavior" />
         <StackPanel Grid.Row="10" Grid.Column="1" Spacing="6"><CheckBox IsChecked="{Binding AllowLaunchWithMissingDependencies}" Content="Allow launch with missing dependencies" /><CheckBox IsChecked="{Binding CloseAfterLaunch}" Content="Close AAML after successful launch" /><CheckBox IsChecked="{Binding AllowMultipleInstances}" Content="Allow multiple AAML instances (applies next start)" /></StackPanel>
         <TextBlock Grid.Row="12" Text="Workshop checks" />
-        <ComboBox Grid.Row="12" Grid.Column="1" Width="250" HorizontalAlignment="Left" ItemsSource="{Binding WorkshopStartupRefreshOptions}" SelectedItem="{Binding WorkshopStartupRefresh}" />
+        <ComboBox AutomationProperties.AutomationId="DashboardWorkshopPolicyCombo" Grid.Row="12" Grid.Column="1" Width="250" HorizontalAlignment="Left" ItemsSource="{Binding WorkshopStartupRefreshOptions}" SelectedItem="{Binding WorkshopStartupRefresh}" />
         <TextBlock Grid.Row="14" Text="Theme" />
         <ComboBox Grid.Row="14" Grid.Column="1" Width="250" HorizontalAlignment="Left" ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding Theme}" />
         <TextBlock Grid.Row="16" Text="Updates" />
         <StackPanel Grid.Row="16" Grid.Column="1" Orientation="Horizontal" Spacing="8"><CheckBox IsChecked="{Binding CheckForUpdates}" Content="Check for AAML updates on startup" /><ComboBox Width="180" ItemsSource="{Binding UpdateChannelOptions}" SelectedItem="{Binding UpdateChannel}" /></StackPanel>
+        <TextBlock Grid.Row="18" Text="Preferences" />
+        <ToggleButton AutomationProperties.AutomationId="DashboardAutoSaveToggle" Grid.Row="18" Grid.Column="1" HorizontalAlignment="Left" IsChecked="{Binding AutoSaveChanges, Mode=TwoWay}" Content="Auto-save changes" />
       </Grid>
       <WrapPanel Orientation="Horizontal">
         <Button AutomationProperties.AutomationId="DashboardSavePreferencesButton" Margin="0,0,8,8" Command="{Binding SavePreferences}" Content="Save preferences" />

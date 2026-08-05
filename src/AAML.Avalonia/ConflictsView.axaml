@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" x:Class="AAML.Avalonia.ConflictsView" x:DataType="local:ConflictsViewModel" AutomationProperties.AutomationId="ConflictsPage">
-  <Grid Margin="24" RowDefinitions="Auto,10,Auto,10,*">
+  <Grid Margin="24,12,24,24" RowDefinitions="Auto,10,Auto,10,*">
     <StackPanel>
       <TextBlock Classes="title" Text="Conflicts" />
       <TextBlock Classes="muted" Text="Derived collisions among active mods. Results are never persisted as user settings." />

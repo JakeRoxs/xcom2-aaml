@@ -4,7 +4,7 @@
              x:Class="AAML.Avalonia.ModsView"
              x:DataType="local:ModsViewModel"
              AutomationProperties.AutomationId="ModsPage">
-  <Grid Margin="24" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="10">
+  <Grid Margin="24,12,24,24" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="10">
     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
       <StackPanel>
         <TextBlock Classes="title" Text="Mods" />
@@ -12,7 +12,7 @@
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <TextBlock IsVisible="{Binding HasUnsaved}" VerticalAlignment="Center" Text="{Binding UnsavedModDraftCount, StringFormat='{}{0} unsaved'}" />
-        <ToggleButton AutomationProperties.AutomationId="ModsInspectorToggle" IsChecked="{Binding IsInspectorVisible, Mode=TwoWay}" Content="Details" ToolTip.Tip="Show or hide the mod preview and details inspector" />
+        <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding AutoSaveStatus}" />
         <Button Command="{Binding DiscardActivation}" Content="Discard" />
         <Button Classes="accent" Command="{Binding Save}" Content="Save changes" />
       </StackPanel>
@@ -59,6 +59,7 @@
       </StackPanel>
       <WrapPanel Grid.Column="2" Orientation="Horizontal">
         <Button Margin="0,0,6,0" IsEnabled="{Binding CanRefreshWorkshop}" Command="{Binding RefreshWorkshop}" Content="Refresh" />
+        <ToggleButton Margin="0,0,6,0" AutomationProperties.AutomationId="ModsInspectorToggle" IsChecked="{Binding IsInspectorVisible, Mode=TwoWay}" Content="Details" ToolTip.Tip="Show or hide the mod preview and details inspector" />
         <Button Margin="0,0,6,0" IsVisible="{Binding CanUpdateSelected}" Command="{Binding UpdateSelected}" Content="Update selected" />
         <Button IsVisible="{Binding IsMonitoringWorkshop}" Command="{Binding StopMonitoring}" Content="Stop watching downloads" />
       </WrapPanel>
@@ -66,8 +67,15 @@
 
     <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto">
       <DataGrid x:Name="ModsGrid" AutomationProperties.AutomationId="ModsGrid" MinWidth="320" ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="False" RowHeight="34" SelectionMode="Extended" CanUserResizeColumns="True" CanUserReorderColumns="True" ScrollViewer.HorizontalScrollBarVisibility="Auto" SelectionChanged="OnSelectionChanged">
+        <DataGrid.Styles>
+          <Style Selector="DataGridColumnHeader">
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+          </Style>
+        </DataGrid.Styles>
         <DataGrid.Columns>
-          <DataGridTemplateColumn Header="Active" Width="86" MinWidth="86" CanUserResize="True">
+          <DataGridTemplateColumn Header="Active" Width="64" MinWidth="58" CanUserResize="True" CanUserSort="False">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="local:SessionModRow">
                 <CheckBox AutomationProperties.AutomationId="ModsActiveCheckBox" HorizontalAlignment="Center" IsEnabled="{Binding CanActivate}" IsChecked="{Binding IsActive, Mode=TwoWay}" />
@@ -75,16 +83,25 @@
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
           <DataGridTextColumn Header="Name" Binding="{Binding Name}" IsReadOnly="True" Width="*" MinWidth="260" CanUserResize="True" />
-          <DataGridTextColumn Header="Order" Binding="{Binding Order, Mode=TwoWay}" Width="80" MinWidth="72" CanUserResize="True" />
-          <DataGridTemplateColumn Header="WotC" Width="76" MinWidth="70" CanUserResize="True">
+          <DataGridTextColumn Header="Order" Binding="{Binding Order, Mode=TwoWay}" Width="68" MinWidth="56" CanUserResize="True" CanUserSort="False" />
+          <DataGridTemplateColumn Header="WotC" Width="96" MinWidth="88" CanUserResize="True" CanUserSort="False">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="local:SessionModRow">
-                <CheckBox HorizontalAlignment="Center" IsVisible="{Binding !IsGroup}" IsChecked="{Binding RequiresWarOfTheChosen}" IsHitTestVisible="False" Focusable="False" AutomationProperties.HelpText="Checked when this mod targets War of the Chosen" />
+                <Border HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding RequiresWarOfTheChosen}"
+                        Padding="7,2"
+                        CornerRadius="4"
+                        Background="{DynamicResource SystemControlHighlightListAccentLowBrush}"
+                        AutomationProperties.Name="War of the Chosen required"
+                        AutomationProperties.HelpText="This mod requires War of the Chosen and is not an interactive control">
+                  <TextBlock FontSize="12" FontWeight="SemiBold" Text="Required" />
+                </Border>
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTextColumn Header="State" Binding="{Binding State}" Width="150" MinWidth="120" CanUserResize="True" />
-          <DataGridTemplateColumn Header="Workshop" Width="180" MinWidth="140" CanUserResize="True">
+          <DataGridTextColumn Header="State" Binding="{Binding State}" Width="120" MinWidth="96" CanUserResize="True" />
+          <DataGridTemplateColumn Header="Workshop" Width="140" MinWidth="112" CanUserResize="True" CanUserSort="False">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="local:SessionModRow">
                 <StackPanel>
@@ -94,7 +111,7 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTextColumn Header="Count" Binding="{Binding Count}" Width="72" MinWidth="64" CanUserResize="True" />
+          <DataGridTextColumn Header="Count" Binding="{Binding Count}" Width="64" MinWidth="56" CanUserResize="True" CanUserSort="False" />
         </DataGrid.Columns>
       </DataGrid>
 

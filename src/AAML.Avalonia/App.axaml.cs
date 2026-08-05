@@ -38,6 +38,8 @@ using AAML.Application.Diagnostics;
 using AAML.Application.Updates;
 using AAML.Application.Mods.Cleanup;
 using AAML.Infrastructure.Common.Updates;
+using Zafiro.Avalonia.Controls;
+using Zafiro.UI.Navigation.Sections;
 using AAML.Infrastructure.Common.Startup;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
@@ -84,7 +86,12 @@ public sealed partial class App : global::Avalonia.Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var shell = provider.GetRequiredService<IHierarchicalShell>();
-            var shellView = new AamlShellView { DataContext = shell };
+            var session = provider.GetRequiredService<ApplicationSession>();
+            var startupSettings = ShellStartupSettings.LoadAsync(provider.GetRequiredService<ISettingsRepository>(), CancellationToken.None).GetAwaiter().GetResult();
+            if (startupSettings is not null) session.PrimeSettings(startupSettings);
+            // A failed or missing preflight load is retried once by full initialization after the Expanded shell is visible.
+            var shellView = new AamlShellView(startupSettings?.NavigationRailMode ?? AAML.Application.Settings.NavigationRailMode.Expanded) { DataContext = shell };
+            if (startupSettings is not null) shellView.Configure(session);
             desktop.MainWindow = new Window
             {
                 Title = "Avalonia Alternative Mod Launcher",
@@ -97,9 +104,9 @@ public sealed partial class App : global::Avalonia.Application
             shellView.LayoutUpdated += (_, _) => AssignShellNavigationAutomationIds(shellView);
             desktop.MainWindow.Opened += async (_, _) =>
             {
-                var session = provider.GetRequiredService<ApplicationSession>();
                 var initialized = await session.InitializeAsync(CancellationToken.None);
                 if (!initialized.IsSuccess) return;
+                shellView.Configure(session);
                 provider.GetRequiredService<IApplicationUiController>().ApplyTheme(session.Settings!.Theme);
                 if (!session.Settings.AllowMultipleInstances)
                 {
@@ -121,23 +128,23 @@ public sealed partial class App : global::Avalonia.Application
     {
         var sections = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["Dashboard"] = "ShellSectionDashboard",
-            ["Mods"] = "ShellSectionMods",
-            ["Conflicts"] = "ShellSectionConflicts",
-            ["Configurations"] = "ShellSectionConfigurations",
-            ["Profiles"] = "ShellSectionProfiles",
-            ["Migration"] = "ShellSectionMigration",
-            ["Support"] = "ShellSectionSupport",
-            ["Cleanup"] = "ShellSectionCleanup"
+            ["dashboard"] = "ShellSectionDashboard",
+            ["mods"] = "ShellSectionMods",
+            ["conflicts"] = "ShellSectionConflicts",
+            ["configurations"] = "ShellSectionConfigurations",
+            ["profiles"] = "ShellSectionProfiles",
+            ["migration"] = "ShellSectionMigration",
+            ["support"] = "ShellSectionSupport",
+            ["cleanup"] = "ShellSectionCleanup"
         };
 
-        foreach (var text in shellView.GetVisualDescendants().OfType<TextBlock>())
+        foreach (var item in shellView.GetVisualDescendants().OfType<SectionStripItem>())
         {
-            if (text.Text is null || !sections.TryGetValue(text.Text, out var automationId)) continue;
-            var target = text.GetVisualAncestors().OfType<Control>()
-                .FirstOrDefault(control => control.GetType().Name.Contains("Item", StringComparison.Ordinal));
-            if (target is not null && string.IsNullOrEmpty(AutomationProperties.GetAutomationId(target)))
-                AutomationProperties.SetAutomationId(target, automationId);
+            if (item.DataContext is not ISection section || !sections.TryGetValue(section.Id, out var automationId)) continue;
+            AutomationProperties.SetAutomationId(item, automationId);
+            AutomationProperties.SetName(item, section.FriendlyName);
+            AutomationProperties.SetHelpText(item, $"Navigate to {section.FriendlyName}");
+            ToolTip.SetTip(item, section.FriendlyName);
         }
     }
 

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 8,
+  "selectedGame": "XCom2", "gameInstallationLocation": "C:\\Games\\XCOM2", "modRootLocations": ["C:\\Mods"],
+  "launchArguments": ["-log"], "modIntents": [], "categories": [], "tags": [],
+  "allowLaunchWithMissingDependencies": false,
+  "gameLocations": [
+    {"game":"XCom2","installationLocation":"C:\\Games\\XCOM2","modRootLocations":["C:\\Mods"]},
+    {"game":"ChimeraSquad","installationLocation":"I:\\Chimera","modRootLocations":[]}
+  ],
+  "closeAfterLaunch": true, "workshopStartupRefresh": "ActiveMods", "theme": "Dark", "allowMultipleInstances": true,
+  "duplicatePreferences": [],
+  "modGrid": {"includeHidden":true,"stateFilter":null,"groupByCategory":false,"collapsedGroups":[]},
+  "retainedWorkshopItems": [], "checkForUpdates":true, "updateChannel":"Stable",
+  "navigationRailMode": "Compact"
+}

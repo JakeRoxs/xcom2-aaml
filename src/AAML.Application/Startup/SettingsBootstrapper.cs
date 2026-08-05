@@ -22,6 +22,8 @@ public interface ISettingsBootstrapper
     Task<Result<ApplicationSettings>> SetAllowLaunchWithMissingDependenciesAsync(ApplicationSettings settings, bool allow, CancellationToken cancellationToken);
     Task<Result<ApplicationSettings>> SavePreferencesAsync(ApplicationSettings settings, IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> modRoots, bool allowMissingDependencies, bool closeAfterLaunch, WorkshopStartupRefreshPolicy startupRefresh, ThemePreference theme, bool allowMultipleInstances, bool checkForUpdates, UpdateChannelPreference updateChannel, CancellationToken cancellationToken);
     Task<Result<ApplicationSettings>> SaveModGridPreferencesAsync(ApplicationSettings settings, ModGridPreferences preferences, CancellationToken cancellationToken);
+    Task<Result<ApplicationSettings>> SetNavigationRailModeAsync(ApplicationSettings settings, NavigationRailMode mode, CancellationToken cancellationToken);
+    Task<Result<ApplicationSettings>> SetAutoSaveChangesAsync(ApplicationSettings settings, bool enabled, CancellationToken cancellationToken);
 }
 
 /// <summary>Loads modern settings, migrates legacy intent once, or creates the minimal default.</summary>
@@ -98,6 +100,22 @@ public sealed class SettingsBootstrapper(ISettingsRepository repository, ILegacy
     public async Task<Result<ApplicationSettings>> SaveModGridPreferencesAsync(ApplicationSettings settings, ModGridPreferences preferences, CancellationToken cancellationToken)
     {
         var updated = settings with { ModGrid = preferences };
+        var saved = await repository.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        return saved.IsSuccess ? Result<ApplicationSettings>.Success(updated) : Result<ApplicationSettings>.Failure(saved.Error!);
+    }
+
+    public async Task<Result<ApplicationSettings>> SetNavigationRailModeAsync(ApplicationSettings settings, NavigationRailMode mode, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var updated = settings with { NavigationRailMode = mode };
+        var saved = await repository.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        return saved.IsSuccess ? Result<ApplicationSettings>.Success(updated) : Result<ApplicationSettings>.Failure(saved.Error!);
+    }
+
+    public async Task<Result<ApplicationSettings>> SetAutoSaveChangesAsync(ApplicationSettings settings, bool enabled, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var updated = settings with { AutoSaveChanges = enabled };
         var saved = await repository.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
         return saved.IsSuccess ? Result<ApplicationSettings>.Success(updated) : Result<ApplicationSettings>.Failure(saved.Error!);
     }

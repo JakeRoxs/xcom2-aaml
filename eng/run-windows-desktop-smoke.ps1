@@ -190,12 +190,12 @@ New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $temp -Force | Out-Null
 
 $settings = [ordered]@{
-    schemaVersion = 6; selectedGame = 'XCom2'; gameInstallationLocation = $null; modRootLocations = @()
+    schemaVersion = 9; selectedGame = 'XCom2'; gameInstallationLocation = $null; modRootLocations = @()
     launchArguments = @('-review'); modIntents = @(); categories = @(); tags = @()
-    allowLaunchWithMissingDependencies = $false; gameLocations = @(); closeAfterLaunch = $false
-    workshopStartupRefresh = 'Never'; theme = 'System'; allowMultipleInstances = $true
+    allowLaunchWithMissingDependencies = $false; gameLocations = @([ordered]@{ game = 'XCom2'; installationLocation = $null; modRootLocations = @() }); closeAfterLaunch = $false
+    workshopStartupRefresh = 'AllMods'; theme = 'System'; allowMultipleInstances = $true
     duplicatePreferences = @(); modGrid = [ordered]@{ includeHidden = $false; stateFilter = $null; groupByCategory = $false; collapsedGroups = @() }
-    retainedWorkshopItems = @(); checkForUpdates = $false; updateChannel = 'Stable'
+    retainedWorkshopItems = @(); checkForUpdates = $false; updateChannel = 'Stable'; navigationRailMode = 'Expanded'; autoSaveChanges = $false
 }
 $settingsPath = Join-Path $settingsDirectory 'settings.json'
 $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding utf8
@@ -251,7 +251,10 @@ try {
 
     Invoke-SmokeStep 'startup-and-isolation' {
         $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+        if ($receipt.schemaVersion -ne 2) { throw "Migration receipt schema is $($receipt.schemaVersion)." }
+        if ($receipt.expectedManifestVersion -ne 1 -or $receipt.expectedManifestCount -ne 12) { throw 'Migration receipt manifest identity is unexpected.' }
         if ($receipt.status -notin @('Completed', 'CompletedWithConflicts')) { throw "Migration receipt status is $($receipt.status)." }
+        if ($null -eq $receipt.completedAtUtc) { throw 'Migration receipt has no completion timestamp.' }
         if (@($receipt.items | Where-Object { $_.outcome -notin @('SourceMissing', 'DestinationOnly') }).Count -ne 0) { throw 'Former-root migration was not a no-op.' }
         if (Test-Path -LiteralPath $oldRoot) { throw 'Former application root was created or modified.' }
         [ordered]@{ windowTitle = $window.Current.Name; processId = $process.Id; migrationStatus = $receipt.status }
@@ -261,8 +264,13 @@ try {
         $page = Wait-ByAutomationId $window 'DashboardPage'
         $status = Wait-ByAutomationId $page 'DashboardStatus'
         $arguments = Wait-ByAutomationId $page 'DashboardLaunchArgumentsTextBox'
+        $null = Wait-ByAutomationId $page 'DashboardAutoSaveToggle'
+        $savePreferences = Wait-ByAutomationId $page 'DashboardSavePreferencesButton'
+        $arguments.SetFocus()
         Set-ElementValue $arguments "-review`r`n-noRedScreens"
-        Invoke-Element (Wait-ByAutomationId $page 'DashboardSavePreferencesButton')
+        $savePreferences.SetFocus()
+        Start-Sleep -Milliseconds 150 # Allow Avalonia's UI Automation value change to reach the two-way binding.
+        Invoke-Element $savePreferences
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds($StepTimeoutSeconds)
         do {
             $saved = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json

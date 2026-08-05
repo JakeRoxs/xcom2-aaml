@@ -144,6 +144,34 @@ public sealed class SettingsBootstrapperTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
+    [TestMethod]
+    public async Task NavigationRailMode_PersistsOnlyRequestedField()
+    {
+        var repository = MissingRepository();
+        var service = new SettingsBootstrapper(repository, new FakeImporter());
+        var original = Settings(GameVariant.XCom2) with { Theme = ThemePreference.Dark, CloseAfterLaunch = true };
+
+        var result = await service.SetNavigationRailModeAsync(original, NavigationRailMode.Compact, TestContext.CancellationToken);
+
+        result.IsSuccess.Should().BeTrue(result.Error?.Message);
+        result.Value.Should().Be(original with { NavigationRailMode = NavigationRailMode.Compact });
+        repository.Saved.Should().Be(result.Value);
+    }
+
+    [TestMethod]
+    public async Task AutoSaveChanges_PersistsOnlyRequestedField()
+    {
+        var repository = MissingRepository();
+        var service = new SettingsBootstrapper(repository, new FakeImporter());
+        var original = Settings(GameVariant.XCom2) with { Theme = ThemePreference.Dark, CloseAfterLaunch = true };
+
+        var result = await service.SetAutoSaveChangesAsync(original, true, TestContext.CancellationToken);
+
+        result.IsSuccess.Should().BeTrue(result.Error?.Message);
+        result.Value.Should().Be(original with { AutoSaveChanges = true });
+        repository.Saved.Should().Be(result.Value);
+    }
+
     public TestContext TestContext { get; set; }
 
     private static FakeRepository MissingRepository() => new()

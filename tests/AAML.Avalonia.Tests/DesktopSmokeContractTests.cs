@@ -35,7 +35,13 @@ public sealed class DesktopSmokeContractTests
         harness.Should().Contain("Assert-TreeEqual $artifactHashesBefore $artifactHashesAfter 'Staged artifact'");
         harness.Should().Contain("automation-tree-failure.json");
         harness.Should().Contain("artifactHashesBefore = $artifactHashesBefore");
+        harness.Should().Contain("$receipt.schemaVersion -ne 2");
+        harness.Should().Contain("$receipt.expectedManifestCount -ne 12");
+        harness.Should().Contain("@('Completed', 'CompletedWithConflicts')");
         harness.Should().Contain("$process.CloseMainWindow()");
+        harness.Should().Contain("schemaVersion = 9");
+        harness.Should().Contain("autoSaveChanges = $false");
+        harness.Should().Contain("'DashboardAutoSaveToggle'");
         harness.Should().NotContain("mouse_event");
         harness.Should().NotContain("SendKeys");
     }

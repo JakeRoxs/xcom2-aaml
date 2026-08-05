@@ -8,7 +8,7 @@ public sealed class AutomationSemanticContractTests
 {
     private static readonly IReadOnlyDictionary<string, string[]> RequiredIds = new Dictionary<string, string[]>
     {
-        ["DashboardView.axaml"] = ["DashboardPage", "DashboardGamePathTextBox", "DashboardLaunchArgumentsTextBox", "DashboardDetectSteamButton", "DashboardSavePreferencesButton", "DashboardLaunchButton", "DashboardStatus"],
+        ["DashboardView.axaml"] = ["DashboardPage", "DashboardGamePathTextBox", "DashboardLaunchArgumentsTextBox", "DashboardWorkshopPolicyCombo", "DashboardAutoSaveToggle", "DashboardDetectSteamButton", "DashboardSavePreferencesButton", "DashboardLaunchButton", "DashboardStatus"],
         ["ModsView.axaml"] = ["ModsPage", "ModsRefreshButton", "ModsSearchTextBox", "ModsGrid", "ModsActiveCheckBox", "ModsDangerZone", "ModsStatus"],
         ["ConflictsView.axaml"] = ["ConflictsPage", "ConflictsRefreshButton", "ConflictsSearchTextBox", "ConflictsStatus"],
         ["ConfigurationsView.axaml"] = ["ConfigurationsPage", "ConfigurationsOpenButton", "ConfigurationsEditor", "ConfigurationsRefreshButton", "ConfigurationsStatus"],
@@ -76,6 +76,15 @@ public sealed class AutomationSemanticContractTests
         dangerZone.Descendants().Where(element => element.Name.LocalName == "Button")
             .All(button => button.Attribute("IsVisible") != null || button.Attribute("IsEnabled") != null)
             .Should().BeTrue("every destructive action must be applicability or confirmation gated");
+    }
+
+    [TestMethod]
+    public void GlobalAutoSaveToggleBelongsOnlyToDashboardPreferences()
+    {
+        var documents = LoadViews();
+        documents["DashboardView.axaml"].Descendants().Single(element => Id(element) == "DashboardAutoSaveToggle")
+            .Attribute("Content")!.Value.Should().Be("Auto-save changes");
+        documents["ModsView.axaml"].Descendants().Select(Id).Should().NotContain("DashboardAutoSaveToggle");
     }
 
     private static Dictionary<string, XDocument> LoadViews()

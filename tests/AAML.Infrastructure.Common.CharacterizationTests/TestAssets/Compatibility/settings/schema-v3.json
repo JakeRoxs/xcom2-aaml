@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 3,
+  "selectedGame": "XCom2",
+  "gameInstallationLocation": "C:\\Games\\ScalarWins",
+  "modRootLocations": ["C:\\ScalarMods"],
+  "launchArguments": ["-log"], "modIntents": [], "categories": [], "tags": [],
+  "allowLaunchWithMissingDependencies": true,
+  "gameLocations": [
+    {"game":"XCom2","installationLocation":"C:\\Games\\Stale","modRootLocations":["C:\\StaleMods"]},
+    {"game":"ChimeraSquad","installationLocation":"I:\\Chimera","modRootLocations":[]}
+  ],
+  "closeAfterLaunch": true,
+  "workshopStartupRefresh": "Manual",
+  "theme": "Dark",
+  "allowMultipleInstances": true
+}

@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:AAML.Avalonia" x:Class="AAML.Avalonia.MigrationView" x:DataType="local:MigrationViewModel" AutomationProperties.AutomationId="MigrationPage">
-  <Grid Margin="24" RowDefinitions="Auto,16,Auto,16,*">
+  <Grid Margin="24,12,24,24" RowDefinitions="Auto,16,Auto,16,*">
     <StackPanel>
       <TextBlock Classes="title" Text="Migration" />
       <TextBlock Classes="muted" Text="Rehearse legacy AML lists and snapshots before adopting them. Previewing never changes source or modern data." />
