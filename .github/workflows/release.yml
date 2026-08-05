@@ -38,7 +38,7 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          if ('${{ github.repository }}' -ne 'JakeRoxs/xcom2-dark-launcher') { throw 'Official releases may run only in the canonical repository.' }
+          if ('${{ github.repository }}' -ne 'JakeRoxs/xcom2-aaml') { throw 'Official releases may run only in the canonical repository.' }
           git diff --quiet --exit-code
           if ($LASTEXITCODE -ne 0) { throw 'Checkout has tracked modifications.' }
           git diff --cached --quiet --exit-code

@@ -16,7 +16,7 @@ function Assert-NotMatch([string]$Text, [string]$Pattern, [string]$Message) {
 Assert-Match $workflow '(?m)^\s+tags:\s*\r?\n\s+- ''v\*''' 'Release workflow must trigger on v* tags.'
 Assert-Match $workflow '(?m)^\s+workflow_dispatch:' 'Release workflow must support manual dispatch.'
 Assert-NotMatch $workflow '(?m)^\s+pull_request(?:_target)?:' 'Release workflow must never run for pull requests.'
-Assert-Match $workflow 'github\.repository.*-ne.*JakeRoxs/xcom2-dark-launcher' 'Canonical repository guard is missing.'
+Assert-Match $workflow 'github\.repository.*-ne.*JakeRoxs/xcom2-aaml' 'Canonical repository guard is missing.'
 Assert-Match $workflow 'git diff --quiet' 'Clean tracked commit provenance check is missing.'
 Assert-Match $workflow 'rid:\s*\[win-x64, linux-x64\]' 'Release staging must use the exact RID matrix.'
 Assert-NotMatch $workflow 'release-windows-signing|AAML_WINDOWS_SIGNING|sign-aaml-windows|signtool' 'Unsigned release workflow must not require signing environments, secrets, or tools.'

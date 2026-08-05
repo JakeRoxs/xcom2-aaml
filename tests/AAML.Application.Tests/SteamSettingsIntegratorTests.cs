@@ -52,7 +52,7 @@ public sealed class SteamSettingsIntegratorTests
             Directory.CreateDirectory(workshop);
             var app = new SteamInstalledApplication(SteamAppId.ChimeraSquad, "I:\\SteamLibrary", "appmanifest_882100.acf", "XCOM-Chimera-Squad", "I:\\SteamLibrary\\steamapps\\common\\XCOM-Chimera-Squad", "XCOM: Chimera Squad", "4", true, true);
             var discovery = new FixedDiscovery(new SteamGameDiscovery(SteamAppId.ChimeraSquad, [], [], [app], [new SteamWorkshopLocation(SteamAppId.ChimeraSquad, "I:\\SteamLibrary", workshop, [])], [], [], []));
-            var settings = Settings(["D:\\Manual Mods", "G:\\SteamLibrary\\steamapps\\workshop\\content\\268500"]) with { SelectedGame = GameVariant.ChimeraSquad };
+            var settings = Settings(["D:\\Manual Mods", "G:\\SteamLibrary\\steamapps\\workshop\\content\\268500", "/mnt/steam/steamapps/workshop/content/268500"]) with { SelectedGame = GameVariant.ChimeraSquad };
 
             var result = await new SteamSettingsIntegrator(discovery, new RecordingRepository()).DiscoverAndApplyAsync(settings, TestContext.CancellationToken);
 

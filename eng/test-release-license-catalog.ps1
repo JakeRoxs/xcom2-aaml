@@ -2,7 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $generator = Join-Path $PSScriptRoot 'generate-release-evidence.ps1'
-$repository = 'JakeRoxs/xcom2-dark-launcher'
+$repository = 'JakeRoxs/xcom2-aaml'
 $commit = '0000000000000000000000000000000000000000'
 $scratch = Join-Path ([System.IO.Path]::GetTempPath()) "aaml-license-catalog-$([guid]::NewGuid().ToString('N'))"
 

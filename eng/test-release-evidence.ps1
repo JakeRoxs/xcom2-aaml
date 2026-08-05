@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 
 $generator = Join-Path $PSScriptRoot 'generate-release-evidence.ps1'
 $scratch = Join-Path ([System.IO.Path]::GetTempPath()) "aaml-release-evidence-$([guid]::NewGuid().ToString('N'))"
-$repository = 'JakeRoxs/xcom2-dark-launcher'
+$repository = 'JakeRoxs/xcom2-aaml'
 $commit = '0000000000000000000000000000000000000000'
 
 function Write-Bytes {

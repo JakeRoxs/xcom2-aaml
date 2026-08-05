@@ -149,7 +149,7 @@ public sealed class ProductionSectionTests
         viewModel.Product.Should().Be("Avalonia Alternative Mod Launcher");
         viewModel.Version.Should().Be("1.2.3");
         opened.Should().Equal(ProjectIdentity.RepositoryUri, ProjectIdentity.IssuesUri, ProjectIdentity.WikiUri);
-        opened.Should().OnlyContain(uri => uri.Host == "github.com" && uri.AbsolutePath.StartsWith("/JakeRoxs/xcom2-dark-launcher", StringComparison.Ordinal));
+        opened.Should().OnlyContain(uri => uri.Host == "github.com" && uri.AbsolutePath.StartsWith("/JakeRoxs/xcom2-aaml", StringComparison.Ordinal));
     }
 
     private static object CreateViewModel(Type type, params object[] overrides)

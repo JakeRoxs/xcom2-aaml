@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/JakeRoxs/xcom2-dark-launcher/eng/qualification/evidence.schema.json",
+  "$id": "https://github.com/JakeRoxs/xcom2-aaml/eng/qualification/evidence.schema.json",
   "title": "AAML protected qualification evidence",
   "type": "object",
   "additionalProperties": false,

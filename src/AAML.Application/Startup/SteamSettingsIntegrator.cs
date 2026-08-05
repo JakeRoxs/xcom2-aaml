@@ -44,7 +44,7 @@ public sealed class SteamSettingsIntegrator(ISteamFilesystemDiscovery discovery,
     private static bool IsSteamWorkshopContentRoot(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
-        var components = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var components = path.TrimEnd('\\', '/').Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
         return components.Length >= 3 && components[^2].Equals("content", StringComparison.OrdinalIgnoreCase) && components[^3].Equals("workshop", StringComparison.OrdinalIgnoreCase) && uint.TryParse(components[^1], out _);
     }
 }

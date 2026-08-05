@@ -26,7 +26,7 @@ public sealed class UpdateCheckServiceTests
         var service = new UpdateCheckService(new ReleaseSource(Release("v2.0.0-beta.10", true)), new VersionSource("2.0.0-beta.2+local"));
         (await service.CheckAsync(UpdateChannelPreference.Prerelease, CancellationToken.None)).Value!.Status.Should().Be(UpdateCheckStatus.UpdateAvailable);
     }
-    private static ReleaseInfo Release(string tag, bool prerelease = false) => new(tag, tag, false, prerelease, "notes", new Uri("https://github.com/JakeRoxs/xcom2-dark-launcher/releases/tag/test"), DateTimeOffset.UtcNow, []);
+    private static ReleaseInfo Release(string tag, bool prerelease = false) => new(tag, tag, false, prerelease, "notes", new Uri("https://github.com/JakeRoxs/xcom2-aaml/releases/tag/test"), DateTimeOffset.UtcNow, []);
     private sealed class ReleaseSource(ReleaseInfo release) : IReleaseService { public Task<Result<ReleaseInfo?>> GetLatestAsync(ReleaseChannel channel, CancellationToken cancellationToken) => Task.FromResult(Result<ReleaseInfo?>.Success(release)); }
     private sealed class VersionSource(string version) : IApplicationVersionProvider { public Result<string> GetCurrentVersion() => Result<string>.Success(version); }
 }

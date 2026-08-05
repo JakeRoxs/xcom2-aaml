@@ -124,6 +124,7 @@ $policy = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release-supply-chai
 $canonicalRepository = $policy.canonicalRepository.TrimEnd('/')
 $repositoryUrl = if ($Repository -match '^[^/]+/[^/]+$') { "https://github.com/$Repository" } else { $Repository.TrimEnd('/') }
 if ($repositoryUrl -ne $canonicalRepository) { throw "Repository '$Repository' is not the canonical repository '$canonicalRepository'." }
+$repositoryCoordinates = $repositoryUrl.Substring('https://github.com/'.Length)
 
 $lockPaths = @('src/AAML.Avalonia/packages.lock.json')
 if ($Rid -eq 'linux-x64') {
@@ -435,7 +436,7 @@ $serialSeed = [Text.Encoding]::UTF8.GetBytes("$Rid|$Version|$Commit|$repositoryU
 $serialHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($serialSeed)).ToLowerInvariant()
 $sbom = [ordered]@{
     bomFormat = 'CycloneDX'; specVersion = '1.6'; serialNumber = "urn:uuid:$($serialHash.Substring(0,8))-$($serialHash.Substring(8,4))-$($serialHash.Substring(12,4))-$($serialHash.Substring(16,4))-$($serialHash.Substring(20,12))"; version = 1
-    metadata = [ordered]@{ component = [ordered]@{ type = 'application'; 'bom-ref' = "pkg:github/JakeRoxs/xcom2-dark-launcher@${Version}?rid=${Rid}"; name = 'Avalonia Alternative Mod Launcher'; version = $Version; purl = "pkg:github/JakeRoxs/xcom2-dark-launcher@$Version"; properties = @([ordered]@{ name = 'aaml:rid'; value = $Rid }, [ordered]@{ name = 'aaml:repository'; value = $repositoryUrl }, [ordered]@{ name = 'aaml:commit'; value = $Commit }) } }
+    metadata = [ordered]@{ component = [ordered]@{ type = 'application'; 'bom-ref' = "pkg:github/${repositoryCoordinates}@${Version}?rid=${Rid}"; name = 'Avalonia Alternative Mod Launcher'; version = $Version; purl = "pkg:github/${repositoryCoordinates}@$Version"; properties = @([ordered]@{ name = 'aaml:rid'; value = $Rid }, [ordered]@{ name = 'aaml:repository'; value = $repositoryUrl }, [ordered]@{ name = 'aaml:commit'; value = $Commit }) } }
     components = @($components | Sort-Object name, version)
     dependencies = $dependencies
     properties = @([ordered]@{ name = 'aaml:license-text-complete'; value = ($licenseGaps.Count -eq 0).ToString().ToLowerInvariant() }, [ordered]@{ name = 'aaml:release-blocking-license-gap-count'; value = [string]$licenseGaps.Count })

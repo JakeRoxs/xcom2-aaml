@@ -68,6 +68,6 @@ public sealed class WindowsGameConfigurationWriter : IGameConfigurationWriter
 
     private static string ToEngineModRoot(string root)
     {
-        return root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return root.TrimEnd('\\', '/') + '\\';
     }
 }

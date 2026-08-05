@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "canonicalRepository": "https://github.com/JakeRoxs/xcom2-dark-launcher",
+  "canonicalRepository": "https://github.com/JakeRoxs/xcom2-aaml",
   "signing": {
     "windowsAuthenticode": {
       "requiredForPublicRelease": false,

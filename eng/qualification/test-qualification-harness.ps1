@@ -7,17 +7,17 @@ try {
     $extract = Join-Path $root 'extract'
     New-Item -ItemType Directory -Path $payload -Force | Out-Null
     'fixture' | Set-Content -LiteralPath (Join-Path $payload 'fixture.txt') -Encoding ascii
-    [ordered]@{ schemaVersion = 1; rid = 'win-x64'; version = '1.2.3'; repository = 'https://github.com/JakeRoxs/xcom2-dark-launcher'; commit = '0123456789abcdef0123456789abcdef01234567'; selfContained = $true } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $payload 'release-metadata.json') -Encoding utf8
+    [ordered]@{ schemaVersion = 1; rid = 'win-x64'; version = '1.2.3'; repository = 'https://github.com/JakeRoxs/xcom2-aaml'; commit = '0123456789abcdef0123456789abcdef01234567'; selfContained = $true } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $payload 'release-metadata.json') -Encoding utf8
     $checksumLines = Get-ChildItem -LiteralPath $payload -File | ForEach-Object { "$(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 | Select-Object -ExpandProperty Hash)  $($_.Name)" }
     $checksumLines | Set-Content -LiteralPath (Join-Path $payload 'SHA256SUMS') -Encoding ascii
     $archive = Join-Path $root 'fixture.zip'
     Compress-Archive -Path (Join-Path $root 'payload/win-x64') -DestinationPath $archive
     $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-    $result = & (Join-Path $PSScriptRoot 'assert-exact-artifact.ps1') -ArchivePath $archive -ExpectedArchiveSha256 $hash -ExpectedRepository 'https://github.com/JakeRoxs/xcom2-dark-launcher' -ExpectedCommit '0123456789abcdef0123456789abcdef01234567' -ExpectedVersion '1.2.3' -ExtractionDirectory $extract
+    $result = & (Join-Path $PSScriptRoot 'assert-exact-artifact.ps1') -ArchivePath $archive -ExpectedArchiveSha256 $hash -ExpectedRepository 'https://github.com/JakeRoxs/xcom2-aaml' -ExpectedCommit '0123456789abcdef0123456789abcdef01234567' -ExpectedVersion '1.2.3' -ExtractionDirectory $extract
     if ($result.rid -ne 'win-x64') { throw 'Valid exact-artifact fixture was rejected.' }
 
     $failed = $false
-    try { & (Join-Path $PSScriptRoot 'assert-exact-artifact.ps1') -ArchivePath $archive -ExpectedArchiveSha256 ('0' * 64) -ExpectedRepository 'https://github.com/JakeRoxs/xcom2-dark-launcher' -ExpectedCommit '0123456789abcdef0123456789abcdef01234567' -ExpectedVersion '1.2.3' -ExtractionDirectory $extract } catch { $failed = $_.Exception.Message -match 'SHA-256 mismatch' }
+    try { & (Join-Path $PSScriptRoot 'assert-exact-artifact.ps1') -ArchivePath $archive -ExpectedArchiveSha256 ('0' * 64) -ExpectedRepository 'https://github.com/JakeRoxs/xcom2-aaml' -ExpectedCommit '0123456789abcdef0123456789abcdef01234567' -ExpectedVersion '1.2.3' -ExtractionDirectory $extract } catch { $failed = $_.Exception.Message -match 'SHA-256 mismatch' }
     if (-not $failed) { throw 'Archive hash mismatch fixture did not fail closed.' }
 
     Add-Content -LiteralPath (Join-Path $payload 'fixture.txt') -Value 'tampered'
@@ -25,7 +25,7 @@ try {
     Compress-Archive -Path (Join-Path $root 'payload/win-x64') -DestinationPath $archive
     $tamperedArchiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     $failed = $false
-    try { & (Join-Path $PSScriptRoot 'assert-exact-artifact.ps1') -ArchivePath $archive -ExpectedArchiveSha256 $tamperedArchiveHash -ExpectedRepository 'https://github.com/JakeRoxs/xcom2-dark-launcher' -ExpectedCommit '0123456789abcdef0123456789abcdef01234567' -ExpectedVersion '1.2.3' -ExtractionDirectory $extract } catch { $failed = $_.Exception.Message -match 'SHA256SUMS mismatch' }
+    try { & (Join-Path $PSScriptRoot 'assert-exact-artifact.ps1') -ArchivePath $archive -ExpectedArchiveSha256 $tamperedArchiveHash -ExpectedRepository 'https://github.com/JakeRoxs/xcom2-aaml' -ExpectedCommit '0123456789abcdef0123456789abcdef01234567' -ExpectedVersion '1.2.3' -ExtractionDirectory $extract } catch { $failed = $_.Exception.Message -match 'SHA256SUMS mismatch' }
     if (-not $failed) { throw 'Payload tamper fixture did not fail closed.' }
 
     $workflow = Get-Content -LiteralPath (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) '.github/workflows/protected-qualification.yml') -Raw

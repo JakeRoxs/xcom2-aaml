@@ -3,7 +3,7 @@ namespace AAML.Application;
 public static class ProjectIdentity
 {
     public const string GitHubOwner = "JakeRoxs";
-    public const string GitHubRepository = "xcom2-dark-launcher";
+    public const string GitHubRepository = "xcom2-aaml";
     public static Uri RepositoryUri { get; } = new($"https://github.com/{GitHubOwner}/{GitHubRepository}");
     public static Uri IssuesUri { get; } = new($"https://github.com/{GitHubOwner}/{GitHubRepository}/issues");
     public static Uri WikiUri { get; } = new($"https://github.com/{GitHubOwner}/{GitHubRepository}/wiki");

@@ -36,24 +36,24 @@ If you have any questions or suggestions regarding AML, you are welcome to join 
 
 # Installation / Setup
 
-Please check the [installation instructions](https://github.com/JakeRoxs/xcom2-dark-launcher/wiki/Installation) and read how to [get started](https://github.com/JakeRoxs/xcom2-dark-launcher/wiki/Getting-started).
+Please check the [installation instructions](https://github.com/JakeRoxs/xcom2-aaml/wiki/Installation) and read how to [get started](https://github.com/JakeRoxs/xcom2-aaml/wiki/Getting-started).
 
 # Contributing
 
 As a community project, everyone is welcome to contribute. If you are willing to assist in developing and testing AML, please do not hesitate to contact any of the team members [on Discord](https://discord.gg/QHSVGRn) to get involved.
 
 - Reviewing and testing changes from pull requests.
-- Resolving open [issues](https://github.com/JakeRoxs/xcom2-dark-launcher/issues).
+- Resolving open [issues](https://github.com/JakeRoxs/xcom2-aaml/issues).
 - Suggesting improvements and finding bugs.
-- Creating [wiki content](https://github.com/JakeRoxs/xcom2-dark-launcher/wiki) (tutorials/guides, common troubleshooting tips, etc)
+- Creating [wiki content](https://github.com/JakeRoxs/xcom2-aaml/wiki) (tutorials/guides, common troubleshooting tips, etc)
 
 # License
 
-Released under [GPLv3](https://github.com/JakeRoxs/xcom2-dark-launcher/blob/main/LICENSE).
+Released under [GPLv3](https://github.com/JakeRoxs/xcom2-aaml/blob/main/LICENSE).
 
 # Bug Reports
 
-If you encounter [issues](https://github.com/JakeRoxs/xcom2-dark-launcher/issues), please [consider reporting it](https://github.com/JakeRoxs/xcom2-dark-launcher/wiki/FAQ#how-and-where-do-i-report-a-bugissue).
+If you encounter [issues](https://github.com/JakeRoxs/xcom2-aaml/issues), please [consider reporting it](https://github.com/JakeRoxs/xcom2-aaml/wiki/FAQ#how-and-where-do-i-report-a-bugissue).
 
 # Credit
 
