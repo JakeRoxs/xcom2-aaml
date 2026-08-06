@@ -22,7 +22,7 @@ jobs:
       RID: ${{ inputs.platform == 'windows' && 'win-x64' || 'linux-x64' }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
       - run: dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
