@@ -24,7 +24,7 @@ jobs:
       - shell: pwsh
         run: ./eng/run-windows-desktop-smoke.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Desktop Smoke/win-x64' -EvidenceDirectory '${{ runner.temp }}/AAML Desktop Smoke/evidence'
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-smoke-evidence-${{ github.run_number }}
           path: ${{ runner.temp }}/AAML Desktop Smoke/evidence
