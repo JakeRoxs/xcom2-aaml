@@ -10,6 +10,25 @@ $ErrorActionPreference = 'Stop'
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 $metadataPath = Join-Path $ArtifactDirectory 'release-metadata.json'
 
+function Get-CanonicalHash([string]$Path) {
+    $extension = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+    $textExtensions = @('.svg', '.json', '.xml', '.txt', '.md', '.yml', '.yaml', '.toml')
+    $content = if ($textExtensions -contains $extension) {
+        $text = [System.IO.File]::ReadAllText($Path)
+        $text -replace "`r`n", "`n" -replace "`r", "`n"
+    }
+    else {
+        [System.IO.File]::ReadAllBytes($Path)
+    }
+
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = if ($content -is [byte[]]) { $content } else { [System.Text.UTF8Encoding]::new($false).GetBytes($content) }
+        return [System.BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $hasher.Dispose() }
+}
+
 if ($GenerateChecksums -and $VerifyChecksums) { throw 'GenerateChecksums and VerifyChecksums cannot be used together.' }
 if (-not (Test-Path -LiteralPath $ArtifactDirectory -PathType Container)) { throw "Artifact directory does not exist: $ArtifactDirectory" }
 
@@ -37,7 +56,7 @@ if ($brandProvenance.repository -ne 'https://github.com/JakeRoxs/xcom2-aaml' -or
     $brandProvenance.declaration -notmatch 'without copying or tracing' -or
     @($brandProvenance.externalAssets).Count -ne 0 -or
     @($brandProvenance.legacyAssets).Count -ne 0) { throw 'Packaged brand provenance is not AAML-owned and self-contained.' }
-if ((Get-FileHash -LiteralPath $brandSource -Algorithm SHA256).Hash -ne $brandManifest.files.'aaml-icon.svg'.sha256) { throw 'Packaged scalable brand source differs from its generated asset manifest.' }
+if ((Get-CanonicalHash $brandSource) -ne $brandManifest.files.'aaml-icon.svg'.sha256) { throw 'Packaged scalable brand source differs from its generated asset manifest.' }
 $brandSvg = Get-Content -LiteralPath $brandSource -Raw
 if ($brandSvg -match '<(?:image|text|use)\b|(?:href|font-family|url)\s*=') { throw 'Packaged brand source contains non-geometric or external content.' }
 
@@ -120,8 +139,8 @@ foreach ($depsFile in @(Get-ChildItem -LiteralPath $ArtifactDirectory -Filter '*
     if (-not $sourceDeps.ContainsKey($relative.ToLowerInvariant())) { throw "Shipped deps document has no SBOM provenance: $relative" }
 }
 foreach ($binary in @($files | Where-Object {
-    $_.Name -match '\.(?:dll|exe|so)$' -or ($_.Extension -eq '' -and $_.Length -ge 4 -and [Convert]::ToHexString([System.IO.File]::ReadAllBytes($_.FullName)[0..3]) -eq '7F454C46')
-})) {
+            $_.Name -match '\.(?:dll|exe|so)$' -or ($_.Extension -eq '' -and $_.Length -ge 4 -and [Convert]::ToHexString([System.IO.File]::ReadAllBytes($_.FullName)[0..3]) -eq '7F454C46')
+        })) {
     $relative = [System.IO.Path]::GetRelativePath($ArtifactDirectory, $binary.FullName).Replace('\', '/')
     if (-not $assetOwners.ContainsKey($relative.ToLowerInvariant())) { throw "Shipped binary has no SBOM owner: $relative" }
 }
@@ -164,7 +183,8 @@ if ($manifest.rid -eq 'win-x64') {
         if ($null -eq $associatedIcon) { throw 'Windows executable has no extractable application icon metadata.' }
         $associatedIcon.Dispose()
     }
-} else {
+}
+else {
     $desktopId = 'io.github.jakeroxs.xcom2_aaml'
     $desktop = Get-Content -LiteralPath (Join-Path $ArtifactDirectory "share/applications/$desktopId.desktop") -Raw
     [xml]$appstream = Get-Content -LiteralPath (Join-Path $ArtifactDirectory "share/metainfo/$desktopId.metainfo.xml") -Raw
@@ -180,7 +200,7 @@ if ($manifest.rid -eq 'win-x64') {
         if ($width -ne $size -or $height -ne $size) { throw "Packaged Linux icon has invalid dimensions: $iconPath" }
     }
     $scalable = Join-Path $ArtifactDirectory "share/icons/hicolor/scalable/apps/$desktopId.svg"
-    if ((Get-FileHash -LiteralPath $scalable -Algorithm SHA256).Hash -ne $brandManifest.files.'aaml-icon.svg'.sha256) { throw 'Packaged Linux scalable icon differs from canonical source.' }
+    if ((Get-CanonicalHash $scalable) -ne $brandManifest.files.'aaml-icon.svg'.sha256) { throw 'Packaged Linux scalable icon differs from canonical source.' }
 }
 
 $steamManifestPath = Join-Path $ArtifactDirectory 'steamworks-manifest.json'
@@ -211,8 +231,8 @@ if ($VerifyChecksums) {
     $checksumPath = Join-Path $ArtifactDirectory 'SHA256SUMS'
     if (-not (Test-Path -LiteralPath $checksumPath -PathType Leaf)) { throw 'SHA256SUMS is missing.' }
     $expectedFiles = @($files | Where-Object Name -ne 'SHA256SUMS' | ForEach-Object {
-        [System.IO.Path]::GetRelativePath($ArtifactDirectory, $_.FullName).Replace('\', '/')
-    } | Sort-Object)
+            [System.IO.Path]::GetRelativePath($ArtifactDirectory, $_.FullName).Replace('\', '/')
+        } | Sort-Object)
     $listedFiles = @()
     foreach ($line in Get-Content -LiteralPath $checksumPath) {
         if ($line -notmatch '^([0-9A-Fa-f]{64})  (.+)$') { throw "Invalid SHA256SUMS line: $line" }
