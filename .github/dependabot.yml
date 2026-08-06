@@ -7,6 +7,10 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "UTC"
+    groups:
+      nuget-all:
+        patterns:
+          - "*"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
@@ -21,6 +25,10 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "UTC"
+    groups:
+      github-actions-all:
+        patterns:
+          - "*"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"

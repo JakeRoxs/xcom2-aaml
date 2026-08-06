@@ -41,8 +41,8 @@ try {
     New-Item -ItemType Directory -Path $ambiguous | Out-Null
     @{
         entries = @(
-            @{ packageNames = @('Avalonia'); version = '12.0.4'; spdx = 'MIT'; repository = 'https://example.invalid/one'; localFiles = @('eng/license-texts/dotnet-foundation-mit.txt') },
-            @{ packagePatterns = @('Avalonia'); versions = @('12.0.4'); spdx = 'MIT'; repository = 'https://example.invalid/two'; localFiles = @('eng/license-texts/dotnet-foundation-mit.txt') }
+            @{ packageNames = @('Avalonia'); version = '12.1.1'; spdx = 'MIT'; repository = 'https://example.invalid/one'; localFiles = @('eng/license-texts/dotnet-foundation-mit.txt') },
+            @{ packagePatterns = @('Avalonia'); versions = @('12.1.1'); spdx = 'MIT'; repository = 'https://example.invalid/two'; localFiles = @('eng/license-texts/dotnet-foundation-mit.txt') }
         )
     } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $ambiguous 'catalog.json') -Encoding utf8
     Assert-CatalogFailure 'ambiguous' 'Ambiguous license catalog mapping'

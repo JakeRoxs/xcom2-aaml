@@ -2,24 +2,18 @@
   "description": "Authoritative license and notice evidence for utility packages in the current SBOM. Entries establish evidence and do not assert that a restored package is shipped.",
   "entries": [
     {
-      "packageNames": [
-        "Serilog"
-      ],
+      "packageNames": ["Serilog"],
       "version": "4.3.0",
       "spdx": "Apache-2.0",
       "repository": "https://github.com/serilog/serilog",
       "sourceRef": "v4.3.0",
       "sourceCommit": "1b461379f4e218a939d5c94897df2a1dbbf90573",
       "sourcePath": "LICENSE",
-      "localFiles": [
-        "eng/license-texts/serilog-4.3.0-Apache-2.0.txt"
-      ],
+      "localFiles": ["eng/license-texts/serilog-4.3.0-Apache-2.0.txt"],
       "evidenceNotes": "The exact release tag supplies the Apache-2.0 text. The 4.3.0 NuGet metadata independently declares Apache-2.0 and identifies repository commit 726e29c5b172aa8813285be1ad8cc728fd531eab. No upstream NOTICE file exists at the release tag."
     },
     {
-      "packageNames": [
-        "Serilog.Sinks.Console"
-      ],
+      "packageNames": ["Serilog.Sinks.Console"],
       "version": "6.0.0",
       "spdx": "Apache-2.0",
       "repository": "https://github.com/serilog/serilog-sinks-console",
@@ -32,9 +26,7 @@
       "evidenceNotes": "The exact release tag supplies the Apache-2.0 text. No upstream NOTICE file exists at the release tag. The sink has a separate repository and license file from Serilog core, so its evidence is retained separately."
     },
     {
-      "packageNames": [
-        "NodaTime"
-      ],
+      "packageNames": ["NodaTime"],
       "version": "3.2.2",
       "spdx": "Apache-2.0",
       "repository": "https://github.com/nodatime/nodatime",
@@ -55,9 +47,7 @@
       "evidenceNotes": "The exact release tag and NuGet repository commit agree. NOTICE.txt attributes the Joda Time-derived portions and must accompany the Apache-2.0 license evidence when NodaTime is redistributed."
     },
     {
-      "packageNames": [
-        "CSharpFunctionalExtensions"
-      ],
+      "packageNames": ["CSharpFunctionalExtensions"],
       "version": "3.6.0",
       "spdx": "MIT",
       "repository": "https://github.com/vkhorikov/CSharpFunctionalExtensions",
@@ -70,9 +60,7 @@
       "evidenceNotes": "The exact release tag supplies Vladimir Khorikov's MIT copyright and permission notice; the NuGet package independently declares MIT."
     },
     {
-      "packageNames": [
-        "JetBrains.Annotations"
-      ],
+      "packageNames": ["JetBrains.Annotations"],
       "version": "2025.2.2",
       "spdx": "MIT",
       "repository": "https://github.com/JetBrains/JetBrains.Annotations",
@@ -85,33 +73,25 @@
       "evidenceNotes": "Caveat: upstream has no 2025.2.2 Git tag, and the 2025.2.2 NuGet metadata omits a repository commit. The package itself declares MIT and Copyright (c) 2016-2025 JetBrains s.r.o.; the closest preceding authoritative Git ref is 2025.2.1, whose verbatim MIT file is retained here and says 2016-2024. This mapping must not be represented as exact source-ref provenance for 2025.2.2."
     },
     {
-      "packageNames": [
-        "MicroCom.Runtime"
-      ],
-      "version": "0.11.4",
+      "packageNames": ["MicroCom.Runtime"],
+      "version": "0.11.6",
       "spdx": "MIT",
       "repository": "https://github.com/kekekeks/MicroCom",
       "sourceRef": "28850f85fb586488828ab7267ed4a87e8c970b51",
       "sourceCommit": "28850f85fb586488828ab7267ed4a87e8c970b51",
       "sourcePath": "LICENSE",
-      "localFiles": [
-        "eng/license-texts/microcom-runtime-0.11.4-MIT.txt"
-      ],
+      "localFiles": ["eng/license-texts/microcom-runtime-0.11.4-MIT.txt"],
       "evidenceNotes": "The NuGet metadata pins this exact repository commit and declares MIT. The authoritative file preserves Nikita Tsukanov's 2021 copyright notice."
     },
     {
-      "packageNames": [
-        "Tmds.DBus.Protocol"
-      ],
-      "version": "0.92.0",
+      "packageNames": ["Tmds.DBus.Protocol"],
+      "version": "0.94.1",
       "spdx": "MIT",
       "repository": "https://github.com/tmds/Tmds.DBus",
       "sourceRef": "282acebca8d4e4e3ba211646ac650911ee94edfd",
       "sourceCommit": "282acebca8d4e4e3ba211646ac650911ee94edfd",
       "sourcePath": "COPYING",
-      "localFiles": [
-        "eng/license-texts/tmds-dbus-protocol-0.92.0-MIT.txt"
-      ],
+      "localFiles": ["eng/license-texts/tmds-dbus-protocol-0.92.0-MIT.txt"],
       "evidenceNotes": "The NuGet metadata pins this exact release/0.92 commit and declares MIT. COPYING retains the Alp Toker, contributors, and Tom Deseyn copyright notices."
     },
     {
@@ -132,18 +112,14 @@
       "evidenceNotes": "All three exact package IDs are produced from the same repository/version. Their NuGet metadata pins this commit and declares MIT. Exact names intentionally avoid matching unrelated TestableIO packages."
     },
     {
-      "packageNames": [
-        "Testably.Abstractions.FileSystem.Interface"
-      ],
+      "packageNames": ["Testably.Abstractions.FileSystem.Interface"],
       "version": "9.0.0",
       "spdx": "MIT",
       "repository": "https://github.com/Testably/Testably.Abstractions",
       "sourceRef": "e3f60b39df247720d64485067b2f30abcb9a63f1",
       "sourceCommit": "e3f60b39df247720d64485067b2f30abcb9a63f1",
       "sourcePath": "LICENSE",
-      "localFiles": [
-        "eng/license-texts/testably-abstractions-9.0.0-MIT.txt"
-      ],
+      "localFiles": ["eng/license-texts/testably-abstractions-9.0.0-MIT.txt"],
       "evidenceNotes": "The NuGet metadata pins this exact repository commit and declares MIT. This package is separately authored and licensed from the TestableIO System.IO.Abstractions packages despite being their dependency."
     }
   ]
