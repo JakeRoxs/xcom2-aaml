@@ -119,7 +119,7 @@ jobs:
       - name: Extract and revalidate archive
         shell: pwsh
         run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-${{ matrix.rid }}${{ matrix.rid == 'win-x64' && '.zip' || '.tar.gz' }}' -Rid '${{ matrix.rid }}' -ManifestPath '${{ matrix.manifest }}' -ExtractionDirectory '${{ runner.temp }}/AAML Extracted/${{ matrix.rid }}'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: AAML-0.0.0-ci.${{ github.run_number }}-${{ matrix.rid }}
           path: ${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-*
