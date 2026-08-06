@@ -20,8 +20,12 @@ function Assert-Hash([string]$Path, [string]$Expected) {
     if ($actual -cne $Expected) { throw "Brand asset hash differs from its manifest: $Path" }
 }
 
+function Get-NormalizedText([string]$Path) {
+    return [System.IO.File]::ReadAllText($Path)
+}
+
 try {
-    [xml]$svg = Get-Content -LiteralPath (Join-Path $branding 'aaml-icon.svg') -Raw
+    [xml]$svg = Get-NormalizedText (Join-Path $branding 'aaml-icon.svg')
     if ($svg.svg.viewBox -ne '0 0 256 256') { throw 'Canonical SVG must use the 256-unit design grid.' }
     $svgText = $svg.OuterXml
     if ($svgText -match '<(?:image|text|use)\b|(?:href|font-family|url)\s*=') { throw 'Canonical SVG must contain only self-contained geometric primitives.' }
