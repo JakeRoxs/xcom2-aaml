@@ -156,7 +156,7 @@ jobs:
         shell: pwsh
         run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip' -Rid win-x64 -ManifestPath './eng/package-manifests/aaml-win-x64.json' -ExtractionDirectory '${{ runner.temp }}/AAML Roundtrip/win-x64' -OfficialRelease
       - name: Attest final Windows archive
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip
       - uses: actions/upload-artifact@v4
@@ -193,7 +193,7 @@ jobs:
         shell: pwsh
         run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-linux-x64.tar.gz' -Rid linux-x64 -ManifestPath './eng/package-manifests/aaml-linux-x64.json' -ExtractionDirectory '${{ runner.temp }}/AAML Roundtrip/linux-x64' -OfficialRelease
       - name: Attest final Linux archive
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-linux-x64.tar.gz
       - uses: actions/upload-artifact@v4
