@@ -6,7 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <ProjectReference Include="../AAML.Application/AAML.Application.csproj" />
     <ProjectReference Include="../AAML.Domain/AAML.Domain.csproj" />
   </ItemGroup>
