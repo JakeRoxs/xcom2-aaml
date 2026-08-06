@@ -16,16 +16,21 @@ function Get-PngDimensions([string]$Path) {
 
 function Assert-Hash([string]$Path, [string]$Expected) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Expected brand asset is missing: $Path" }
-    $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $actual = [System.BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $hasher.Dispose() }
     if ($actual -cne $Expected) { throw "Brand asset hash differs from its manifest: $Path" }
 }
 
-function Get-NormalizedText([string]$Path) {
+function Get-TextContent([string]$Path) {
     return [System.IO.File]::ReadAllText($Path)
 }
 
 try {
-    [xml]$svg = Get-NormalizedText (Join-Path $branding 'aaml-icon.svg')
+    [xml]$svg = Get-TextContent (Join-Path $branding 'aaml-icon.svg')
     if ($svg.svg.viewBox -ne '0 0 256 256') { throw 'Canonical SVG must use the 256-unit design grid.' }
     $svgText = $svg.OuterXml
     if ($svgText -match '<(?:image|text|use)\b|(?:href|font-family|url)\s*=') { throw 'Canonical SVG must contain only self-contained geometric primitives.' }
@@ -92,6 +97,9 @@ try {
     if ($appstream.component.id -ne 'io.github.jakeroxs.xcom2_aaml' -or $appstream.component.launchable.'#text' -ne 'io.github.jakeroxs.xcom2_aaml.desktop') { throw 'AppStream application or desktop ID is invalid.' }
 
     'Validated original provenance, deterministic generation, PNG dimensions, ICO frames, executable/window wiring, and Linux metadata.'
+}
+catch {
+    throw
 }
 finally {
     if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force }
