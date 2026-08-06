@@ -14,14 +14,28 @@ function Get-PngDimensions([string]$Path) {
     return @($width, $height)
 }
 
-function Assert-Hash([string]$Path, [string]$Expected) {
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Expected brand asset is missing: $Path" }
-    $bytes = [System.IO.File]::ReadAllBytes($Path)
+function Get-CanonicalHash([string]$Path) {
+    $extension = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+    $textExtensions = @('.svg', '.json', '.xml', '.txt', '.md', '.yml', '.yaml', '.toml')
+    $bytes = if ($textExtensions -contains $extension) {
+        $text = [System.IO.File]::ReadAllText($Path)
+        $normalized = $text -replace "`r`n", "`n" -replace "`r", "`n"
+        [System.Text.UTF8Encoding]::new($false).GetBytes($normalized)
+    }
+    else {
+        [System.IO.File]::ReadAllBytes($Path)
+    }
+
     $hasher = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $actual = [System.BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
+        return [System.BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
     }
     finally { $hasher.Dispose() }
+}
+
+function Assert-Hash([string]$Path, [string]$Expected) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Expected brand asset is missing: $Path" }
+    $actual = Get-CanonicalHash $Path
     if ($actual -cne $Expected) { throw "Brand asset hash differs from its manifest: $Path" }
 }
 
@@ -43,6 +57,10 @@ try {
     $manifest = Get-Content -LiteralPath (Join-Path $generated 'asset-manifest.json') -Raw | ConvertFrom-Json
     foreach ($property in $manifest.files.PSObject.Properties) {
         $path = if ($property.Name -eq 'aaml-icon.svg') { Join-Path $branding $property.Name } else { Join-Path $generated $property.Name }
+        $actual = Get-CanonicalHash $path
+        if ($actual -cne $property.Value.sha256) {
+            Write-Host "HASH MISMATCH: $($property.Name) expected=$($property.Value.sha256) actual=$actual"
+        }
         Assert-Hash $path $property.Value.sha256
         if ($property.Value.kind -eq 'png') {
             $dimensions = Get-PngDimensions $path
@@ -79,8 +97,8 @@ try {
     $actualFiles = @(Get-ChildItem -LiteralPath $scratch -File -Recurse | ForEach-Object { [System.IO.Path]::GetRelativePath($scratch, $_.FullName).Replace('\', '/') } | Sort-Object)
     if (Compare-Object $expectedFiles $actualFiles) { throw 'Regenerated brand asset file set differs from checked-in outputs.' }
     foreach ($relative in $expectedFiles) {
-        $expectedHash = (Get-FileHash -LiteralPath (Join-Path $generated $relative) -Algorithm SHA256).Hash
-        $actualHash = (Get-FileHash -LiteralPath (Join-Path $scratch $relative) -Algorithm SHA256).Hash
+        $expectedHash = Get-CanonicalHash (Join-Path $generated $relative)
+        $actualHash = Get-CanonicalHash (Join-Path $scratch $relative)
         if ($expectedHash -cne $actualHash) { throw "Brand generation is not byte-reproducible: $relative" }
     }
 

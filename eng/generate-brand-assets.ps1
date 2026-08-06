@@ -10,7 +10,31 @@ $sourcePath = Join-Path $root 'assets/branding/aaml-icon.svg'
 $provenancePath = Join-Path $root 'assets/branding/provenance.json'
 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) { throw 'Canonical SVG source is missing.' }
 if (-not (Test-Path -LiteralPath $provenancePath -PathType Leaf)) { throw 'Brand provenance is missing.' }
-$sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+function Get-CanonicalHash([string]$Path) {
+    $extension = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+    $textExtensions = @('.svg', '.json', '.xml', '.txt', '.md', '.yml', '.yaml', '.toml')
+    $content = if ($textExtensions -contains $extension) {
+        $text = [System.IO.File]::ReadAllText($Path)
+        $text -replace "`r`n", "`n" -replace "`r", "`n"
+    }
+    else {
+        [System.IO.File]::ReadAllBytes($Path)
+    }
+
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = if ($content -is [byte[]]) { $content } else { [System.Text.UTF8Encoding]::new($false).GetBytes($content) }
+        return [System.BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $hasher.Dispose() }
+}
+
+function Write-CanonicalUtf8File([string]$Path, [string]$Content) {
+    $normalized = $Content -replace "`r`n", "`n" -replace "`r", "`n"
+    [System.IO.File]::WriteAllText($Path, $normalized, [System.Text.UTF8Encoding]::new($false))
+}
+
+$sourceHash = Get-CanonicalHash $sourcePath
 $rasterizerSourceHash = 'fbb7e2dd3b2845bff52e9770ac1ec895e1e38f73e47a44cbc18490b035f78808'
 if ($sourceHash -cne $rasterizerSourceHash) {
     throw 'Canonical SVG changed without updating the matching deterministic rasterizer geometry and source hash.'
@@ -249,6 +273,6 @@ foreach ($size in $pngSizes) {
     source = 'assets/branding/aaml-icon.svg'
     generator = 'eng/generate-brand-assets.ps1'
     files = $files
-} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'asset-manifest.json') -Encoding utf8
+} | ConvertTo-Json -Depth 8 | ForEach-Object { $_ } | Out-String | ForEach-Object { Write-CanonicalUtf8File (Join-Path $OutputDirectory 'asset-manifest.json') $_ }
 
 "Generated AAML brand assets in $OutputDirectory"
