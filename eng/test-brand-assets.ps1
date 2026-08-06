@@ -109,10 +109,16 @@ try {
     if ($app -notmatch 'Icon\s*=\s*CreateWindowIcon\(' -or $app -notmatch 'internal static WindowIcon CreateWindowIcon\(' -or $app -notmatch 'avares://AAML\.Avalonia/Assets/aaml-icon\.png') { throw 'Avalonia main window icon is not wired through the shared icon factory.' }
     if ($fatal -notmatch 'Icon\s*=\s*App\.CreateWindowIcon\(') { throw 'Avalonia fatal-error window does not use the shared icon factory.' }
 
-    $desktop = Get-Content -LiteralPath (Join-Path $root 'eng/linux/io.github.jakeroxs.xcom2_aaml.desktop') -Raw
-    [xml]$appstream = Get-Content -LiteralPath (Join-Path $root 'eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml') -Raw
-    if ($desktop -notmatch '(?m)^Icon=io\.github\.jakeroxs\.xcom2_aaml$' -or $desktop -notmatch '(?m)^Exec=AAML\.Avalonia$') { throw 'Linux desktop icon or executable reference is invalid.' }
-    if ($appstream.component.id -ne 'io.github.jakeroxs.xcom2_aaml' -or $appstream.component.launchable.'#text' -ne 'io.github.jakeroxs.xcom2_aaml.desktop') { throw 'AppStream application or desktop ID is invalid.' }
+    $desktop = (Get-Content -LiteralPath (Join-Path $root 'eng/linux/io.github.jakeroxs.xcom2_aaml.desktop') -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
+    [xml]$appstream = (Get-Content -LiteralPath (Join-Path $root 'eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml') -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
+    if ($desktop -notmatch '(?m)^Icon=io\.github\.jakeroxs\.xcom2_aaml$' -or $desktop -notmatch '(?m)^Exec=AAML\.Avalonia$') {
+        Write-Host "Desktop content: $desktop"
+        throw 'Linux desktop icon or executable reference is invalid.'
+    }
+    if ($appstream.component.id -ne 'io.github.jakeroxs.xcom2_aaml' -or $appstream.component.launchable.'#text' -ne 'io.github.jakeroxs.xcom2_aaml.desktop') {
+        Write-Host "AppStream id=$($appstream.component.id) launchable=$($appstream.component.launchable.'#text')"
+        throw 'AppStream application or desktop ID is invalid.'
+    }
 
     'Validated original provenance, deterministic generation, PNG dimensions, ICO frames, executable/window wiring, and Linux metadata.'
 }
