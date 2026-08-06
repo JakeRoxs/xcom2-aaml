@@ -55,12 +55,13 @@ public sealed class LinuxLegacyGameConfigurationSource : ILegacyGameConfiguratio
                 value = value[1..^1].Trim();
             }
             if (value.Length == 0 || value.IndexOf('\0') >= 0) return new(index, raw, null, line, ExistingModRootResolution.Malformed);
-            var relative = !value.StartsWith('/') && !(value.Length >= 3 && value[1] == ':' && (value[2] == '\\' || value[2] == '/'));
+            var normalizedValue = NormalizePathValue(value);
+            var relative = !normalizedValue.StartsWith('/') && !(normalizedValue.Length >= 2 && normalizedValue[1] == ':' && (normalizedValue[2] == '\\' || normalizedValue[2] == '/'));
             string candidate;
-            if (relative) candidate = Path.GetFullPath(Path.Combine(binary, value.Replace('\\', Path.DirectorySeparatorChar)));
-            else if (value.StartsWith("S:\\", StringComparison.OrdinalIgnoreCase) || value.StartsWith("S:/", StringComparison.OrdinalIgnoreCase)) candidate = Path.GetFullPath(Path.Combine(layout.SteamAppsPath, value[3..].Replace('\\', Path.DirectorySeparatorChar)));
-            else if (value.StartsWith("Z:\\", StringComparison.OrdinalIgnoreCase) || value.StartsWith("Z:/", StringComparison.OrdinalIgnoreCase)) candidate = Path.GetFullPath("/" + value[3..].Replace('\\', '/'));
-            else if (value.StartsWith('/')) candidate = Path.GetFullPath(value);
+            if (relative) candidate = Path.GetFullPath(Path.Combine(binary, normalizedValue));
+            else if (normalizedValue.StartsWith("S:", StringComparison.OrdinalIgnoreCase)) candidate = Path.GetFullPath(Path.Combine(layout.SteamAppsPath, normalizedValue[2..].TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+            else if (normalizedValue.StartsWith("Z:", StringComparison.OrdinalIgnoreCase)) candidate = Path.GetFullPath("/" + normalizedValue[2..].TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            else if (normalizedValue.StartsWith('/')) candidate = Path.GetFullPath(normalizedValue);
             else return new(index, raw, null, line, ExistingModRootResolution.Malformed);
             if (relative && !IsContained(candidate, layout.GameInstallPath)) return new(index, raw, candidate, line, ExistingModRootResolution.OutsideRoot);
             if (!seen.Add(candidate)) return new(index, raw, candidate, line, ExistingModRootResolution.Duplicate);
@@ -74,5 +75,11 @@ public sealed class LinuxLegacyGameConfigurationSource : ILegacyGameConfiguratio
 
     private static bool IsContained(string candidate, string root) { var relative = Path.GetRelativePath(root, candidate); return relative != ".." && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) && !Path.IsPathRooted(relative); }
     private static bool HasReparsePoint(string path) { for (var current = new DirectoryInfo(path); current is not null; current = current.Parent) if (current.Exists && current.Attributes.HasFlag(FileAttributes.ReparsePoint)) return true; return false; }
-    private static string? TryFullPath(string path) { try { return Path.GetFullPath(path); } catch { return null; } }
+    private static string? TryFullPath(string path) { try { return Path.GetFullPath(NormalizePathValue(path)); } catch { return null; } }
+    private static string NormalizePathValue(string value)
+    {
+        var normalized = value.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+        if (normalized.Length > 1) normalized = normalized.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return normalized;
+    }
 }

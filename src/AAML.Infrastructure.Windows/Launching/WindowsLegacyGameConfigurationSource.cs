@@ -131,9 +131,9 @@ public sealed class WindowsLegacyGameConfigurationSource : ILegacyGameConfigurat
                 value = value[1..^1].Trim();
             }
             if (string.IsNullOrWhiteSpace(value) || value.IndexOf('\0') >= 0) return new(index, raw, null, line, ExistingModRootResolution.Malformed);
-            value = value.Replace('/', '\\').TrimEnd('\\');
-            var relative = !Path.IsPathRooted(value);
-            var resolved = Path.GetFullPath(relative ? Path.Combine(binary, value) : value);
+            var normalizedValue = NormalizePathValue(value);
+            var relative = !Path.IsPathRooted(normalizedValue);
+            var resolved = Path.GetFullPath(relative ? Path.Combine(binary, normalizedValue) : normalizedValue);
             if (relative && !IsContained(resolved, installation)) return new(index, raw, resolved, line, ExistingModRootResolution.OutsideRoot);
             if (!seen.Add(resolved)) return new(index, raw, resolved, line, ExistingModRootResolution.Duplicate);
             if (configured.Contains(resolved)) return new(index, raw, resolved, line, ExistingModRootResolution.AlreadyConfigured);
@@ -158,7 +158,14 @@ public sealed class WindowsLegacyGameConfigurationSource : ILegacyGameConfigurat
         return false;
     }
 
-    private static string? TryFullPath(string path) { try { return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); } catch { return null; } }
+    private static string? TryFullPath(string path) { try { return Path.GetFullPath(NormalizePathValue(path)).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); } catch { return null; } }
+
+    private static string NormalizePathValue(string value)
+    {
+        var normalized = value.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+        if (normalized.Length > 1) normalized = normalized.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return normalized;
+    }
 
     private static string BuildRootReport(GameVariant variant, string path, string fingerprint, string behavior, IReadOnlyList<ExistingModRootRow> rows) =>
         $"ModRootDirs migration preview\nVariant: {variant}\nSource: {path}\nSource preserved: yes\nSource SHA-256: {fingerprint}\nBehavior: {behavior}\n" +
