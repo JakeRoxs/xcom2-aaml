@@ -185,7 +185,7 @@ public sealed class ApplicationSessionActivationTests
         viewModel.UpdateChannel = UpdateChannelPreference.Prerelease;
 
         ui.Verify(service => service.ApplyTheme(ThemePreference.Dark), Times.Once);
-        await WaitUntilAsync(() => fixture.PreferencesSaveCount == 1);
+        await fixture.PreferencesSaveCompleted.Task.WaitAsync(TimeSpan.FromSeconds(3), TestContext.CancellationToken);
         fixture.PreferencesSaved.Should().NotBeNull();
         fixture.PreferencesSaved!.LaunchArguments.Select(argument => argument.Value).Should().Equal("-review");
         fixture.PreferencesSaved.AllowLaunchWithMissingDependencies.Should().BeTrue();
@@ -613,6 +613,7 @@ public sealed class ApplicationSessionActivationTests
                 {
                     PreferencesSaveCount++;
                     PreferencesSaved = current with { LaunchArguments = arguments, ModRootLocations = roots, AllowLaunchWithMissingDependencies = allowMissing, CloseAfterLaunch = closeAfter, WorkshopStartupRefresh = workshop, Theme = theme, AllowMultipleInstances = multiple, CheckForUpdates = checkUpdates, UpdateChannel = channel };
+                    PreferencesSaveCompleted.TrySetResult();
                     return Result<ApplicationSettings>.Success(PreferencesSaved);
                 });
             Bootstrapper.Setup(service => service.SaveModGridPreferencesAsync(It.IsAny<ApplicationSettings>(), It.IsAny<ModGridPreferences>(), It.IsAny<CancellationToken>()))
@@ -695,6 +696,7 @@ public sealed class ApplicationSessionActivationTests
         public bool? AutoSavePreferenceSaved { get; private set; }
         public int PreferencesSaveCount { get; private set; }
         public ApplicationSettings? PreferencesSaved { get; private set; }
+        public TaskCompletionSource PreferencesSaveCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int ModGridSaveCount { get; private set; }
         public ModGridPreferences? ModGridSaved { get; private set; }
 
