@@ -14,14 +14,14 @@
     },
     {
       "packagePatterns": ["Microsoft.Extensions.*"],
-      "versions": ["9.0.10", "10.0.1"],
+      "versions": ["9.0.10", "10.0.10"],
       "classification": "runtime-library",
       "spdx": "MIT",
       "repository": "https://github.com/dotnet/runtime",
-      "ref": "v9.0.10 and v10.0.1",
+      "ref": "v9.0.10 and v10.0.10",
       "path": "LICENSE.TXT",
       "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
-      "notes": "The exact LICENSE.TXT blob (Git blob 984713a49622a96da110443c15477613bc12656b) is identical at both release tags. The wildcard is intentionally limited to Microsoft.Extensions packages."
+      "notes": "The exact .NET runtime MIT license applies to the restored Microsoft.Extensions 9.0.10 and 10.0.10 packages. The wildcard is intentionally limited to Microsoft.Extensions packages."
     },
     {
       "packageNames": ["System.ComponentModel.Annotations"],
@@ -78,7 +78,7 @@
       "ref": "23.2.28",
       "path": "LICENSE",
       "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
-      "notes": "NuGet 11.4.13 declares MIT and records commit 0e6157063bfe95bbf92540a1553a24368ea132cb, but that commit is not resolvable in the current public repository. The exact same project license is pinned at the contemporaneous ReactiveUI 23.2.28 tag used by this package."
+      "notes": "NuGet 11.4.13 declares MIT; the exact same project license is pinned at the contemporaneous ReactiveUI 23.2.28 tag used by this package."
     },
     {
       "packageNames": ["ReactiveUI.Validation"],
@@ -141,11 +141,12 @@
     },
     {
       "packageNames": ["Newtonsoft.Json"],
-      "versions": ["13.0.3"],
+      "versions": ["13.0.4"],
       "classification": "runtime-library",
       "spdx": "MIT",
       "repository": "https://github.com/JamesNK/Newtonsoft.Json",
-      "ref": "13.0.3",
+      "ref": "13.0.4",
+      "commit": "4e13299d4b0ec96bd4df9954ef646bd2d1b5bf2a",
       "path": "LICENSE.md",
       "localFiles": ["eng/license-texts/newtonsoft-json-mit.md"],
       "notes": "Exact upstream release-tag license."

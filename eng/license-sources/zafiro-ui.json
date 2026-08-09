@@ -40,27 +40,27 @@
       "ids": [
         "Optris.Icons.Avalonia"
       ],
-      "version": "12.0.4",
+      "version": "12.0.7",
       "spdx": "MIT",
       "repository": "https://github.com/Optris/Optris.Icons.Avalonia",
-      "ref": "v12.0.4",
-      "commit": "05c884d60f45f29caa4ebc40f24855a2906d54fa",
+      "ref": "v12.0.7",
+      "commit": "72f65ad04aa15c16f117b9be050568f9fb131a5c",
       "path": "LICENSE",
       "localFiles": [
         "eng/license-texts/optris-icons-avalonia-mit.txt"
       ],
       "secondaryNotices": [],
-      "notes": "The annotated package source commit is the v12.0.4 tag object target used by NuGet metadata."
+      "notes": "The package NuGet metadata declares MIT and pins the exact repository commit."
     },
     {
       "ids": [
         "Optris.Icons.Avalonia.FontAwesome"
       ],
-      "version": "12.0.4",
+      "version": "12.0.7",
       "spdx": "MIT",
       "repository": "https://github.com/Optris/Optris.Icons.Avalonia",
-      "ref": "v12.0.4",
-      "commit": "05c884d60f45f29caa4ebc40f24855a2906d54fa",
+      "ref": "v12.0.7",
+      "commit": "72f65ad04aa15c16f117b9be050568f9fb131a5c",
       "path": "LICENSE",
       "localFiles": [
         "eng/license-texts/optris-icons-avalonia-mit.txt"

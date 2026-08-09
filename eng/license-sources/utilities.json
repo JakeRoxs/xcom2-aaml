@@ -3,27 +3,27 @@
   "entries": [
     {
       "packageNames": ["Serilog"],
-      "version": "4.3.0",
+      "version": "4.4.0",
       "spdx": "Apache-2.0",
       "repository": "https://github.com/serilog/serilog",
-      "sourceRef": "v4.3.0",
-      "sourceCommit": "1b461379f4e218a939d5c94897df2a1dbbf90573",
+      "sourceRef": "v4.4.0",
+      "sourceCommit": "497f80fda4f9e8f98b9c13ba34b1f0530f8c4449",
       "sourcePath": "LICENSE",
       "localFiles": ["eng/license-texts/serilog-4.3.0-Apache-2.0.txt"],
-      "evidenceNotes": "The exact release tag supplies the Apache-2.0 text. The 4.3.0 NuGet metadata independently declares Apache-2.0 and identifies repository commit 726e29c5b172aa8813285be1ad8cc728fd531eab. No upstream NOTICE file exists at the release tag."
+      "evidenceNotes": "The 4.4.0 NuGet metadata declares Apache-2.0 and pins the exact repository commit. No upstream NOTICE file exists at the release tag."
     },
     {
       "packageNames": ["Serilog.Sinks.Console"],
-      "version": "6.0.0",
+      "version": "6.1.1",
       "spdx": "Apache-2.0",
       "repository": "https://github.com/serilog/serilog-sinks-console",
-      "sourceRef": "v6.0.0",
-      "sourceCommit": "4c9a7b6946dfd2d7f07a792c40bb3d46af835ee9",
+      "sourceRef": "v6.1.1",
+      "sourceCommit": "b3cb1f042f5636161b831fa8816d70d865a5eec4",
       "sourcePath": "LICENSE",
       "localFiles": [
         "eng/license-texts/serilog-sinks-console-6.0.0-Apache-2.0.txt"
       ],
-      "evidenceNotes": "The exact release tag supplies the Apache-2.0 text. No upstream NOTICE file exists at the release tag. The sink has a separate repository and license file from Serilog core, so its evidence is retained separately."
+      "evidenceNotes": "The 6.1.1 NuGet metadata declares Apache-2.0 and pins the exact repository commit. No upstream NOTICE file exists at the release tag."
     },
     {
       "packageNames": ["NodaTime"],

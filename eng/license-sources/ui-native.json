@@ -4,7 +4,6 @@
     {
       "packageNames": [
         "Avalonia",
-        "Avalonia.Controls.ColorPicker",
         "Avalonia.Desktop",
         "Avalonia.FreeDesktop",
         "Avalonia.FreeDesktop.AtSpi",
@@ -16,6 +15,17 @@
         "Avalonia.Win32",
         "Avalonia.X11"
       ],
+      "version": "12.1.1",
+      "spdx": "MIT",
+      "repository": "https://github.com/AvaloniaUI/Avalonia",
+      "sourceRef": "12.1.1",
+      "sourceCommit": "e33eaed9c106846b200680751022385d9cc5dc6f",
+      "sourcePath": "licence.md",
+      "localFiles": ["eng/license-texts/avalonia-12.0.4-MIT.txt"],
+      "evidenceNotes": "The 12.1.1 NuGet metadata declares MIT and pins the exact Avalonia repository commit. Explicit names avoid separately licensed native/font packages."
+    },
+    {
+      "packageNames": ["Avalonia.Controls.ColorPicker"],
       "version": "12.0.4",
       "spdx": "MIT",
       "repository": "https://github.com/AvaloniaUI/Avalonia",
@@ -23,7 +33,7 @@
       "sourceCommit": "a8dd6417fd8918570edefdbecd92d16ac7620069",
       "sourcePath": "licence.md",
       "localFiles": ["eng/license-texts/avalonia-12.0.4-MIT.txt"],
-      "evidenceNotes": "The signed 12.0.4 tag resolves to the version commit. MIT requires preservation of the copyright and permission notice. Explicit names avoid accidentally covering separately licensed native/font packages or unrelated Avalonia-prefixed packages."
+      "evidenceNotes": "The retained Zafiro dependency resolves ColorPicker 12.0.4; its signed tag supplies the exact MIT license."
     },
     {
       "packageNames": ["Avalonia.BuildServices"],
@@ -41,7 +51,7 @@
       "spdx": "MIT AND OFL-1.1",
       "repository": "https://github.com/AvaloniaUI/Avalonia",
       "sourceRef": "12.1.1",
-      "sourceCommit": "a8dd6417fd8918570edefdbecd92d16ac7620069",
+      "sourceCommit": "e33eaed9c106846b200680751022385d9cc5dc6f",
       "sourcePath": "src/Avalonia.Fonts.Inter/Assets/*.ttf",
       "additionalSources": [
         {
@@ -69,14 +79,25 @@
     },
     {
       "packageNames": ["Avalonia.Controls.DataGrid"],
-      "version": "12.0.0",
+      "version": "12.1.2",
       "spdx": "MIT",
       "repository": "https://github.com/AvaloniaUI/Avalonia.Controls.DataGrid",
-      "sourceRef": "12.0.0",
-      "sourceCommit": "3d2cf024d6f15d4e770f655246185ad417f93f51",
+      "sourceRef": "12.1.2",
+      "sourceCommit": "1e12211eb0c52a09e314ca57a344147c37d0a26c",
       "sourcePath": "licence.md",
       "localFiles": ["eng/license-texts/avalonia-datagrid-12.0.0-MIT.txt"],
-      "evidenceNotes": "The signed 12.0.0 tag resolves to the version commit. MIT requires preservation of the AvaloniaUI OU copyright and permission notice."
+      "evidenceNotes": "The 12.1.2 NuGet metadata declares MIT and pins the exact DataGrid repository commit."
+    },
+    {
+      "packageNames": ["Avalonia.Angle.Windows.Natives"],
+      "version": "2.1.27548.20260419",
+      "spdx": "BSD-3-Clause",
+      "repository": "https://github.com/AvaloniaUI/angle",
+      "sourceRef": "1c89805903c1482166356d3b950d474973180e61",
+      "sourceCommit": "1c89805903c1482166356d3b950d474973180e61",
+      "sourcePath": "LICENSE",
+      "localFiles": ["eng/license-texts/angle-2.1.27548.20260419-BSD-3-Clause.txt"],
+      "evidenceNotes": "The native package embeds its license and pins this exact AvaloniaUI ANGLE repository commit."
     },
     {
       "packagePatterns": ["HarfBuzzSharp", "HarfBuzzSharp.NativeAssets.*"],
