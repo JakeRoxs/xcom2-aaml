@@ -8,8 +8,10 @@ using AAML.Infrastructure.Common.Files;
 using AAML.Infrastructure.Linux.Launching;
 using AAML.Infrastructure.Linux.Paths;
 using AAML.Infrastructure.Linux.Steam;
+using AAML.Infrastructure.Steam;
 
 if (!OperatingSystem.IsLinux()) return Fail("steam.launch.platform_unsupported", "The Proton wrapper requires Linux.", 78);
+if (args is ["--steam-probe", .. var probeArgs]) return await SteamProbeRunner.RunAsync(probeArgs);
 if (args.Length == 0) return Fail("steam.launch.command_empty", "Steam supplied an empty command.", 64);
 if (Environment.GetEnvironmentVariable(ProtonCommandPlanner.RecursionMarker) == "1") return Fail("steam.launch.recursive_invocation", "The wrapper was invoked recursively.", 78);
 

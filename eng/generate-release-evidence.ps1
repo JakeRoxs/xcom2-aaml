@@ -129,7 +129,6 @@ $repositoryCoordinates = $repositoryUrl.Substring('https://github.com/'.Length)
 $lockPaths = @('src/AAML.Avalonia/packages.lock.json')
 if ($Rid -eq 'linux-x64') {
     $lockPaths += 'tools/AAML.ProtonWrapper/packages.lock.json'
-    $lockPaths += 'tools/AAML.SteamProbe/packages.lock.json'
 }
 $firstPartyNames = @('AAML.Avalonia', 'AAML.Domain', 'AAML.Application', 'AAML.Infrastructure.Common', 'AAML.Infrastructure.Windows', 'AAML.Infrastructure.Linux', 'AAML.Infrastructure.Steam')
 if ($Rid -eq 'linux-x64') { $firstPartyNames += @('AAML.ProtonWrapper', 'AAML.SteamProbe') }

@@ -2,6 +2,10 @@
   "rid": "linux-x64",
   "executable": "AAML.Avalonia",
   "executableFormat": "elf",
+  "additionalExecutables": [
+    "tools/proton-wrapper/AAML.ProtonWrapper",
+    "tools/setup/aaml-proton-launch-option.sh"
+  ],
   "required": [
     "AAML.Avalonia",
     "AAML.Avalonia.dll",
@@ -11,10 +15,6 @@
     "tools/proton-wrapper/AAML.ProtonWrapper.dll",
     "tools/proton-wrapper/AAML.ProtonWrapper.deps.json",
     "tools/proton-wrapper/AAML.ProtonWrapper.runtimeconfig.json",
-    "tools/steam-probe/AAML.SteamProbe",
-    "tools/steam-probe/AAML.SteamProbe.dll",
-    "tools/steam-probe/AAML.SteamProbe.deps.json",
-    "tools/steam-probe/AAML.SteamProbe.runtimeconfig.json",
     "tools/setup/aaml-proton-launch-option.sh",
     "libhostfxr.so",
     "libsteam_api.so",

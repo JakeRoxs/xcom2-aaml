@@ -158,8 +158,12 @@ $hex = [Convert]::ToHexString($magic)
 if ($manifest.executableFormat -eq 'pe' -and -not $hex.StartsWith('4D5A')) { throw 'Windows executable is not PE format.' }
 if ($manifest.executableFormat -eq 'elf' -and $hex -ne '7F454C46') { throw 'Linux executable is not ELF format.' }
 if ($manifest.rid -eq 'linux-x64' -and -not $IsWindows) {
-    $mode = [System.IO.File]::GetUnixFileMode($executable)
-    if (($mode -band [System.IO.UnixFileMode]::UserExecute) -eq 0) { throw 'Linux executable permission is missing.' }
+    foreach ($relative in @($manifest.executable) + @($manifest.additionalExecutables)) {
+        $path = Join-Path $ArtifactDirectory $relative
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Linux executable is missing: $relative" }
+        $mode = [System.IO.File]::GetUnixFileMode($path)
+        if (($mode -band [System.IO.UnixFileMode]::UserExecute) -eq 0) { throw "Linux executable permission is missing: $relative" }
+    }
 }
 
 if ($manifest.rid -eq 'win-x64') {

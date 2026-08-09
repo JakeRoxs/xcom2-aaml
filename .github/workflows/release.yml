@@ -87,8 +87,6 @@ jobs:
           dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
           if ($LASTEXITCODE -ne 0) { throw 'Application restore failed.' }
           if ('${{ matrix.rid }}' -eq 'linux-x64') {
-            dotnet restore tools/AAML.SteamProbe/AAML.SteamProbe.csproj --locked-mode
-            if ($LASTEXITCODE -ne 0) { throw 'Steam probe restore failed.' }
             dotnet restore tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj --locked-mode
             if ($LASTEXITCODE -ne 0) { throw 'Proton wrapper restore failed.' }
           }
@@ -123,7 +121,19 @@ jobs:
           ./eng/validate-aaml-artifact.ps1
           -ArtifactDirectory '${{ runner.temp }}/AAML Stage/${{ matrix.rid }}'
           -ManifestPath '${{ github.workspace }}/eng/package-manifests/aaml-${{ matrix.rid }}.json'
-      - uses: actions/upload-artifact@v7
+      - if: matrix.rid == 'linux-x64'
+        name: Archive Linux staged payload for transport
+        shell: bash
+        run: tar -C '${{ runner.temp }}/AAML Stage' -czf '${{ runner.temp }}/AAML-stage-linux-x64.tar.gz' linux-x64
+      - if: matrix.rid == 'linux-x64'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ runner.temp }}/AAML-stage-linux-x64.tar.gz
+          archive: false
+          if-no-files-found: error
+          retention-days: 2
+      - if: matrix.rid == 'win-x64'
+        uses: actions/upload-artifact@v7
         with:
           name: AAML-stage-${{ matrix.rid }}
           path: ${{ runner.temp }}/AAML Stage
@@ -181,8 +191,13 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
-          name: AAML-stage-linux-x64
-          path: ${{ runner.temp }}/AAML Stage
+          name: AAML-stage-linux-x64.tar.gz
+          path: ${{ runner.temp }}/AAML Transport
+      - name: Extract permission-preserving Linux stage
+        shell: bash
+        run: |
+          mkdir -p '${{ runner.temp }}/AAML Stage'
+          tar -C '${{ runner.temp }}/AAML Stage' -xzf '${{ runner.temp }}/AAML Transport/AAML-stage-linux-x64.tar.gz'
       - name: Official validation and checksums without member signing
         shell: pwsh
         run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Stage/linux-x64' -ManifestPath './eng/package-manifests/aaml-linux-x64.json' -GenerateChecksums -OfficialRelease

@@ -11,5 +11,9 @@
     <ProjectReference Include="../../src/AAML.Application/AAML.Application.csproj" />
     <ProjectReference Include="../../src/AAML.Infrastructure.Common/AAML.Infrastructure.Common.csproj" />
     <ProjectReference Include="../../src/AAML.Infrastructure.Linux/AAML.Infrastructure.Linux.csproj" />
+    <ProjectReference Include="../../src/AAML.Infrastructure.Steam/AAML.Infrastructure.Steam.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../src/ThirdParty/redistributable_bin/linux64/libsteam_api.so" Link="libsteam_api.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

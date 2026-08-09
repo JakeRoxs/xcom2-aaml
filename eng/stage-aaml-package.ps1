@@ -39,7 +39,6 @@ if ($VerifyTrackedSourceInputs) {
         'src/ThirdParty/redistributable_bin/linux64/libsteam_api.so',
         'src/ThirdParty/redistributable_bin/win64/steam_api64.dll',
         'tools/AAML.ProtonWrapper/packages.lock.json',
-        'tools/AAML.SteamProbe/packages.lock.json',
         'LICENSE'
     )
     $sourceInputs += @(Get-ChildItem -LiteralPath (Join-Path $root 'assets/branding/generated/png') -File | ForEach-Object { [System.IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/') })
@@ -70,14 +69,6 @@ if ($Rid -eq 'linux-x64') {
     $setupDirectory = Join-Path $OutputDirectory 'tools/setup'
     New-Item -ItemType Directory -Path $setupDirectory -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $root 'eng/linux/aaml-proton-launch-option.sh') -Destination $setupDirectory
-}
-
-if ($Rid -eq 'linux-x64') {
-    $probeOutput = Join-Path $OutputDirectory 'tools/steam-probe'
-    dotnet publish (Join-Path $root 'tools/AAML.SteamProbe/AAML.SteamProbe.csproj') -c Release -r $Rid --self-contained true --no-restore `
-        -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishAot=false `
-        -p:DebugType=None -p:DebugSymbols=false -o $probeOutput
-    if ($LASTEXITCODE -ne 0) { throw "Steam probe publish failed for $Rid" }
 }
 
 Get-ChildItem -LiteralPath $OutputDirectory -Recurse -Force | Where-Object {
@@ -118,7 +109,6 @@ if ($Rid -eq 'win-x64') {
     if (-not $IsWindows) {
         chmod +x (Join-Path $OutputDirectory 'AAML.Avalonia')
         chmod +x (Join-Path $OutputDirectory 'tools/proton-wrapper/AAML.ProtonWrapper')
-        chmod +x (Join-Path $OutputDirectory 'tools/steam-probe/AAML.SteamProbe')
         chmod +x (Join-Path $OutputDirectory 'tools/setup/aaml-proton-launch-option.sh')
     }
 }

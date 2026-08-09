@@ -89,7 +89,6 @@ jobs:
           git ls-files --error-unmatch eng/release-supply-chain-policy.json eng/generate-release-evidence.ps1 eng/test-release-evidence.ps1 eng/test-release-license-catalog.ps1 eng/license-sources eng/license-texts
           if ($LASTEXITCODE -ne 0) { throw 'Release supply-chain policy inputs are not tracked.' }
       - run: dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
-      - run: dotnet restore tools/AAML.SteamProbe/AAML.SteamProbe.csproj --locked-mode
       - if: matrix.rid == 'linux-x64'
         run: dotnet restore tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj --locked-mode
       - shell: pwsh
@@ -110,6 +109,22 @@ jobs:
         run: ./eng/stage-aaml-package.ps1 -Rid '${{ matrix.rid }}' -OutputDirectory '${{ runner.temp }}/AAML Package/${{ matrix.rid }}' -Version '0.0.0-ci.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -VerifyTrackedSourceInputs
       - shell: pwsh
         run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Package/${{ matrix.rid }}' -ManifestPath '${{ matrix.manifest }}' -GenerateChecksums
+      - if: matrix.rid == 'linux-x64'
+        name: Smoke consolidated Linux helper modes
+        shell: bash
+        working-directory: ${{ runner.temp }}/AAML Package/linux-x64
+        run: |
+          set +e
+          wrapper_output=$(./tools/proton-wrapper/AAML.ProtonWrapper 2>&1)
+          wrapper_code=$?
+          probe_output=$(./tools/proton-wrapper/AAML.ProtonWrapper --steam-probe 2>&1)
+          probe_code=$?
+          set -e
+          test "$wrapper_code" -eq 64
+          grep -q 'steam.launch.command_empty' <<< "$wrapper_output"
+          test "$probe_code" -eq 2
+          grep -q 'initialize/subscriptions' <<< "$probe_output"
+          grep -q 'libsteam_api.so' <<< "$probe_output"
       - if: matrix.rid == 'linux-x64'
         shell: bash
         run: tar -C '${{ runner.temp }}/AAML Package' -czf '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-linux-x64.tar.gz' linux-x64

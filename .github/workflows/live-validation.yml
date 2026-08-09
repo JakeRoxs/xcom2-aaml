@@ -26,7 +26,8 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
-      - run: dotnet restore tools/AAML.SteamProbe/AAML.SteamProbe.csproj --locked-mode
+      - if: inputs.platform == 'windows'
+        run: dotnet restore tools/AAML.SteamProbe/AAML.SteamProbe.csproj --locked-mode
       - if: inputs.platform == 'linux'
         run: dotnet restore tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj --locked-mode
       - name: Stage package
@@ -45,4 +46,4 @@ jobs:
       - if: inputs.platform == 'linux'
         shell: bash
         working-directory: ${{ runner.temp }}/AAML-Live-Package/linux-x64
-        run: ./tools/steam-probe/AAML.SteamProbe
+        run: ./tools/proton-wrapper/AAML.ProtonWrapper --steam-probe

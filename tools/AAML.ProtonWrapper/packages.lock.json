@@ -30,6 +30,16 @@
           "AAML.Application": "[1.0.0, )",
           "AAML.Infrastructure.Common": "[1.0.0, )"
         }
+      },
+      "aaml.infrastructure.steam": {
+        "type": "Project",
+        "dependencies": {
+          "AAML.Application": "[1.0.0, )",
+          "Steamworks.NET": "[1.0.0, )"
+        }
+      },
+      "steamworks.net": {
+        "type": "Project"
       }
     },
     "net10.0/linux-x64": {}
