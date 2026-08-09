@@ -1,5 +1,6 @@
 {
   "rid": "linux-x64",
+  "singleFile": false,
   "executable": "AAML.Avalonia",
   "executableFormat": "elf",
   "additionalExecutables": [

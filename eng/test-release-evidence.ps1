@@ -159,7 +159,28 @@ try {
         Write-Bytes (Join-Path $f.Artifact 'tools/steam-probe/Fixture.Runtime.dll') ([byte[]](1, 2, 3, 4))
         $deps | ConvertTo-Json -Depth 20 | Set-Content $path
     } 'Conflicting package versions'
-    'Validated staged closure fixtures: multi-app, RID filtering, build exclusion, native/resource/flattened assets, and fail-closed attribution/provenance cases.'
+
+    $bundle = Join-Path $scratch 'single-file-bundle'
+    $bundleEvidence = Join-Path $bundle 'evidence'
+    New-Item -ItemType Directory -Path $bundleEvidence -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $valid.Artifact 'AAML.Avalonia') -Destination (Join-Path $bundle 'AAML.Avalonia.exe')
+    Copy-Item -LiteralPath (Join-Path $valid.Artifact 'sbom.cdx.json') -Destination $bundle
+    $sourceDeps = Join-Path $valid.Artifact 'AAML.Avalonia.deps.json'
+    $packagedDeps = Join-Path $bundleEvidence 'AAML.Avalonia.deps.json'
+    $sourceRuntimeConfig = Join-Path $valid.Artifact 'AAML.Avalonia.runtimeconfig.json'
+    $packagedRuntimeConfig = Join-Path $bundleEvidence 'AAML.Avalonia.runtimeconfig.json'
+    '{}' | Set-Content -LiteralPath $sourceRuntimeConfig -Encoding utf8
+    Copy-Item -LiteralPath $sourceRuntimeConfig -Destination $packagedRuntimeConfig
+    Copy-Item -LiteralPath $sourceDeps -Destination $packagedDeps
+    $invalidBundleFailed = $false
+    try { & (Join-Path $PSScriptRoot 'convert-single-file-evidence.ps1') -ArtifactDirectory $bundle -SourceArtifactDirectory $valid.Artifact -BundlePath (Join-Path $bundle 'AAML.Avalonia.exe') -SourceDepsPath $sourceDeps -PackagedDepsPath $packagedDeps -SourceRuntimeConfigPath $sourceRuntimeConfig -PackagedRuntimeConfigPath $packagedRuntimeConfig } catch { $invalidBundleFailed = $true }
+    if (-not $invalidBundleFailed) { throw 'Single-file conversion accepted a non-bundle executable.' }
+    Add-Content -LiteralPath $packagedDeps -Value 'tampered'
+    $conversionFailed = $false
+    try { & (Join-Path $PSScriptRoot 'convert-single-file-evidence.ps1') -ArtifactDirectory $bundle -SourceArtifactDirectory $valid.Artifact -BundlePath (Join-Path $bundle 'AAML.Avalonia.exe') -SourceDepsPath $sourceDeps -PackagedDepsPath $packagedDeps -SourceRuntimeConfigPath $sourceRuntimeConfig -PackagedRuntimeConfigPath $packagedRuntimeConfig } catch { $conversionFailed = $_.Exception.Message -match 'dependency evidence differs' }
+    if (-not $conversionFailed) { throw 'Single-file conversion accepted tampered packaged dependency evidence.' }
+
+    'Validated staged closure fixtures: multi-app, RID filtering, build exclusion, native/resource/flattened assets, single-file embedding, and fail-closed attribution/provenance cases.'
 }
 finally {
     if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force }

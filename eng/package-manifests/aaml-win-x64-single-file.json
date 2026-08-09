@@ -1,15 +1,12 @@
 {
   "rid": "win-x64",
-  "singleFile": false,
+  "singleFile": true,
   "executable": "AAML.Avalonia.exe",
   "executableFormat": "pe",
   "required": [
     "AAML.Avalonia.exe",
-    "AAML.Avalonia.dll",
-    "AAML.Avalonia.deps.json",
-    "AAML.Avalonia.runtimeconfig.json",
-    "hostfxr.dll",
-    "steam_api64.dll",
+    "evidence/AAML.Avalonia.deps.json",
+    "evidence/AAML.Avalonia.runtimeconfig.json",
     "release-metadata.json",
     "steamworks-manifest.json",
     "branding/aaml-icon.svg",

@@ -4,12 +4,15 @@ param(
     [Parameter(Mandatory = $true)][string]$Version,
     [Parameter(Mandatory = $true)][string]$Repository,
     [Parameter(Mandatory = $true)][string]$Commit,
+    [switch]$WindowsSingleFile,
     [switch]$VerifyTrackedSourceInputs
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $root 'src/AAML.Avalonia/AAML.Avalonia.csproj'
+$singleFile = $Rid -eq 'win-x64' -and $WindowsSingleFile
+if ($WindowsSingleFile -and $Rid -ne 'win-x64') { throw 'WindowsSingleFile is valid only for win-x64 staging.' }
 
 if ($VerifyTrackedSourceInputs) {
     $sourceInputs = @(
@@ -20,7 +23,10 @@ if ($VerifyTrackedSourceInputs) {
         'eng/test-brand-assets.ps1',
         'eng/package-manifests/aaml-linux-x64.json',
         'eng/package-manifests/aaml-win-x64.json',
+        'eng/package-manifests/aaml-win-x64-single-file.json',
         'eng/generate-release-evidence.ps1',
+        'eng/convert-single-file-evidence.ps1',
+        'eng/dotnet-bundle.psm1',
         'eng/test-release-evidence.ps1',
         'eng/test-release-license-catalog.ps1',
         'eng/release-supply-chain-policy.json',
@@ -55,10 +61,35 @@ if (Test-Path -LiteralPath $OutputDirectory) {
 }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
+$evidenceArtifactDirectory = $OutputDirectory
+if ($singleFile) {
+    $evidenceArtifactDirectory = "$OutputDirectory-evidence-source"
+    if (Test-Path -LiteralPath $evidenceArtifactDirectory) { Remove-Item -LiteralPath $evidenceArtifactDirectory -Recurse -Force }
+    New-Item -ItemType Directory -Path $evidenceArtifactDirectory -Force | Out-Null
+}
+
 dotnet publish $project -c Release -r $Rid --self-contained true --no-restore `
     -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishAot=false `
-    -p:DebugType=None -p:DebugSymbols=false -o $OutputDirectory
+    -p:DebugType=None -p:DebugSymbols=false -o $evidenceArtifactDirectory
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Rid" }
+
+if ($singleFile) {
+    dotnet publish $project -c Release -r $Rid --self-contained true --no-restore `
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true `
+        -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:PublishAot=false `
+        -p:DebugType=None -p:DebugSymbols=false -o $OutputDirectory
+    if ($LASTEXITCODE -ne 0) { throw "Single-file publish failed for $Rid" }
+    Import-Module (Join-Path $PSScriptRoot 'dotnet-bundle.psm1') -Force
+    $bundlePath = Join-Path $OutputDirectory 'AAML.Avalonia.exe'
+    $bundleEntries = @{}; foreach ($entry in Get-DotNetBundleEntries -BundlePath $bundlePath) { $bundleEntries[$entry.Path] = $entry }
+    foreach ($graphFile in @('AAML.Avalonia.deps.json', 'AAML.Avalonia.runtimeconfig.json')) {
+        if (-not $bundleEntries.ContainsKey($graphFile)) { throw "Single-file bundle has no embedded deployment graph: $graphFile" }
+        Export-DotNetBundleEntry -BundlePath $bundlePath -Entry $bundleEntries[$graphFile] -DestinationPath (Join-Path $evidenceArtifactDirectory $graphFile)
+    }
+    Get-ChildItem -LiteralPath $evidenceArtifactDirectory -File | Where-Object {
+        $_.Name -match '\.(?:dll|exe)$' -and $_.Name -ne 'AAML.Avalonia.exe' -and -not $bundleEntries.ContainsKey($_.Name)
+    } | Remove-Item -Force
+}
 
 if ($Rid -eq 'linux-x64') {
     $wrapperOutput = Join-Path $OutputDirectory 'tools/proton-wrapper'
@@ -74,6 +105,11 @@ if ($Rid -eq 'linux-x64') {
 Get-ChildItem -LiteralPath $OutputDirectory -Recurse -Force | Where-Object {
     $_.Name -match '\.(?:pdb|mdb|dbg|dSYM)$'
 } | Remove-Item -Recurse -Force
+if ($evidenceArtifactDirectory -ne $OutputDirectory) {
+    Get-ChildItem -LiteralPath $evidenceArtifactDirectory -Recurse -Force | Where-Object {
+        $_.Name -match '\.(?:pdb|mdb|dbg|dSYM)$'
+    } | Remove-Item -Recurse -Force
+}
 
 $licenses = Join-Path $OutputDirectory 'licenses'
 New-Item -ItemType Directory -Path $licenses -Force | Out-Null
@@ -88,7 +124,14 @@ Copy-Item -LiteralPath (Join-Path $root 'assets/branding/provenance.json') -Dest
 Copy-Item -LiteralPath (Join-Path $root 'assets/branding/generated/asset-manifest.json') -Destination $brandingDirectory
 
 if ($Rid -eq 'win-x64') {
-    Copy-Item -LiteralPath (Join-Path $root 'src/ThirdParty/redistributable_bin/win64/steam_api64.dll') -Destination $OutputDirectory
+    if ($singleFile) {
+        $evidenceLicenses = Join-Path $evidenceArtifactDirectory 'licenses'
+        New-Item -ItemType Directory -Path $evidenceLicenses -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $licenses 'Steamworks.NET-LICENSE.txt') -Destination $evidenceLicenses
+        Copy-Item -LiteralPath (Join-Path $licenses 'AAML-GPL-3.0.txt') -Destination $evidenceLicenses
+        Copy-Item -LiteralPath (Join-Path $root 'src/AAML.Infrastructure.Steam/steamworks-manifest.json') -Destination $evidenceArtifactDirectory
+    }
+    Copy-Item -LiteralPath (Join-Path $root 'src/ThirdParty/redistributable_bin/win64/steam_api64.dll') -Destination $evidenceArtifactDirectory
     Copy-Item -LiteralPath (Join-Path $root 'assets/branding/generated/aaml.ico') -Destination $brandingDirectory
 } else {
     Copy-Item -LiteralPath (Join-Path $root 'src/ThirdParty/redistributable_bin/linux64/libsteam_api.so') -Destination $OutputDirectory
@@ -122,11 +165,25 @@ if ($Rid -eq 'win-x64') {
     repository = $Repository
     commit = $Commit
     selfContained = $true
-    singleFile = $false
+    singleFile = $singleFile
     trimmed = $false
     nativeAot = $false
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory 'release-metadata.json') -Encoding utf8
 
 # Evidence must inventory the completed payload. Checksums are generated later by the validator.
-& (Join-Path $PSScriptRoot 'generate-release-evidence.ps1') -Rid $Rid -ArtifactDirectory $OutputDirectory -OutputDirectory $OutputDirectory -Version $Version -Repository $Repository -Commit $Commit
+& (Join-Path $PSScriptRoot 'generate-release-evidence.ps1') -Rid $Rid -ArtifactDirectory $evidenceArtifactDirectory -OutputDirectory $OutputDirectory -Version $Version -Repository $Repository -Commit $Commit
 if (-not $?) { throw "Release evidence generation failed for $Rid" }
+
+if ($singleFile) {
+    $evidenceDirectory = Join-Path $OutputDirectory 'evidence'
+    New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
+    $sourceDepsPath = Join-Path $evidenceArtifactDirectory 'AAML.Avalonia.deps.json'
+    $packagedDepsPath = Join-Path $evidenceDirectory 'AAML.Avalonia.deps.json'
+    $sourceRuntimeConfigPath = Join-Path $evidenceArtifactDirectory 'AAML.Avalonia.runtimeconfig.json'
+    $packagedRuntimeConfigPath = Join-Path $evidenceDirectory 'AAML.Avalonia.runtimeconfig.json'
+    Copy-Item -LiteralPath $sourceDepsPath -Destination $packagedDepsPath
+    Copy-Item -LiteralPath $sourceRuntimeConfigPath -Destination $packagedRuntimeConfigPath
+    & (Join-Path $PSScriptRoot 'convert-single-file-evidence.ps1') -ArtifactDirectory $OutputDirectory -SourceArtifactDirectory $evidenceArtifactDirectory -BundlePath (Join-Path $OutputDirectory 'AAML.Avalonia.exe') -SourceDepsPath $sourceDepsPath -PackagedDepsPath $packagedDepsPath -SourceRuntimeConfigPath $sourceRuntimeConfigPath -PackagedRuntimeConfigPath $packagedRuntimeConfigPath
+    if (-not $?) { throw 'Single-file evidence conversion failed.' }
+    Remove-Item -LiteralPath $evidenceArtifactDirectory -Recurse -Force
+}

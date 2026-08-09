@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 $metadataPath = Join-Path $ArtifactDirectory 'release-metadata.json'
 
@@ -27,6 +28,27 @@ function Get-CanonicalHash([string]$Path) {
         return [System.BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
     }
     finally { $hasher.Dispose() }
+}
+
+function Assert-SafeArtifactPath([string]$Path, [string]$Description) {
+    $normalized = $Path.Replace('\', '/')
+    if ([System.IO.Path]::IsPathRooted($Path) -or $normalized -match '(^|/)\.\.(/|$)') { throw "Unsafe $Description path: $Path" }
+    $fullPath = [System.IO.Path]::GetFullPath((Join-Path $ArtifactDirectory $Path))
+    $root = [System.IO.Path]::GetFullPath($ArtifactDirectory).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    if (-not $fullPath.StartsWith($root + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe $Description path: $Path" }
+    return $fullPath
+}
+
+function Test-ArtifactBinary([System.IO.FileInfo]$File) {
+    if ($File.Name -match '\.(?:dll|exe|so)$') { return $true }
+    if ($File.Length -lt 4) { return $false }
+    $stream = [System.IO.File]::Open($File.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+    try {
+        $magic = [byte[]]::new(4)
+        if ($stream.Read($magic, 0, 4) -ne 4) { return $false }
+        return ($magic[0] -eq 0x4d -and $magic[1] -eq 0x5a) -or [Convert]::ToHexString($magic) -eq '7F454C46'
+    }
+    finally { $stream.Dispose() }
 }
 
 if ($GenerateChecksums -and $VerifyChecksums) { throw 'GenerateChecksums and VerifyChecksums cannot be used together.' }
@@ -91,8 +113,12 @@ if ($metadata.rid -ne $manifest.rid) { throw "Metadata RID '$($metadata.rid)' do
 if ([string]::IsNullOrWhiteSpace($metadata.version) -or [string]::IsNullOrWhiteSpace($metadata.repository) -or [string]::IsNullOrWhiteSpace($metadata.commit)) {
     throw 'Release metadata is incomplete.'
 }
-if (-not $metadata.selfContained -or $metadata.singleFile -or $metadata.trimmed -or $metadata.nativeAot) {
-    throw 'Initial package policy requires self-contained, multi-file, untrimmed, non-AOT output.'
+foreach ($flag in @('selfContained', 'singleFile', 'trimmed', 'nativeAot')) {
+    if ($metadata.PSObject.Properties[$flag].Value -isnot [bool]) { throw "Release metadata flag must be Boolean: $flag" }
+}
+if ($manifest.singleFile -isnot [bool]) { throw 'Package manifest singleFile flag must be Boolean.' }
+if (-not $metadata.selfContained -or $metadata.singleFile -ne $manifest.singleFile -or $metadata.trimmed -or $metadata.nativeAot) {
+    throw 'Package deployment metadata does not match the required self-contained, single-file, trim, and AOT policy.'
 }
 
 $policy = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release-supply-chain-policy.json') -Raw | ConvertFrom-Json
@@ -109,40 +135,92 @@ if ($sbomProperties['aaml:rid'] -ne $metadata.rid -or $sbomProperties['aaml:repo
 $sbomRootProperties = @{}; foreach ($property in $sbom.properties) { $sbomRootProperties[$property.name] = $property.value }
 $assetOwners = @{}
 $sourceDeps = @{}
+$bundleEntries = $null
+$bundleEntryHashes = @{}
+$embeddedAssetPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+$embeddedAssetOwners = @{}
+if ($metadata.singleFile) {
+    Import-Module (Join-Path $PSScriptRoot 'dotnet-bundle.psm1') -Force
+    $bundleEntries = @{}
+    foreach ($entry in Get-DotNetBundleEntries -BundlePath $executable) { $bundleEntries[$entry.Path] = $entry }
+}
 foreach ($component in $sbom.components) {
     $componentAssets = @($component.properties | Where-Object name -eq 'aaml:shipped-asset')
-    if ($componentAssets.Count -eq 0) { throw "SBOM component has no shipped asset evidence: $($component.'bom-ref')" }
+    $embeddedBundles = @($component.properties | Where-Object name -eq 'aaml:embedded-bundle')
+    $embeddedAssets = @($component.properties | Where-Object name -eq 'aaml:embedded-asset')
+    if ($componentAssets.Count -eq 0 -and ($embeddedBundles.Count -eq 0 -or $embeddedAssets.Count -eq 0)) { throw "SBOM component has no shipped or embedded asset evidence: $($component.'bom-ref')" }
     foreach ($property in $componentAssets) {
         if ($property.value -notmatch '^(.+)\|([0-9a-fA-F]{64})$') { throw "Invalid shipped asset evidence on $($component.'bom-ref'): $($property.value)" }
         $relative = $Matches[1]
         $expectedHash = $Matches[2]
-        if ([System.IO.Path]::IsPathRooted($relative) -or $relative -match '(^|/)\.\.(/|$)') { throw "Unsafe SBOM shipped asset path: $relative" }
-        $assetPath = Join-Path $ArtifactDirectory $relative
+        $assetPath = Assert-SafeArtifactPath $relative 'SBOM shipped asset'
         if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) { throw "SBOM shipped asset is missing: $relative" }
         if ((Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash -ne $expectedHash) { throw "SBOM shipped asset hash mismatch: $relative" }
         $key = $relative.ToLowerInvariant()
         if ($assetOwners.ContainsKey($key) -and $assetOwners[$key] -ne $component.'bom-ref') { throw "SBOM asset is multiply attributed: $relative" }
         $assetOwners[$key] = $component.'bom-ref'
     }
+    foreach ($property in $embeddedBundles) {
+        if ($property.value -notmatch '^(.+)\|([0-9a-fA-F]{64})$') { throw "Invalid embedded bundle evidence on $($component.'bom-ref'): $($property.value)" }
+        $relative = $Matches[1]
+        $expectedHash = $Matches[2]
+        $bundlePath = Assert-SafeArtifactPath $relative 'SBOM embedded bundle'
+        if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) { throw "SBOM embedded bundle is missing: $relative" }
+        if ((Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash -ne $expectedHash) { throw "SBOM embedded bundle hash mismatch: $relative" }
+    }
+    foreach ($property in $embeddedAssets) {
+        if ($property.value -notmatch '^(.+)\|([0-9a-fA-F]{64})$') { throw "Invalid embedded asset evidence on $($component.'bom-ref'): $($property.value)" }
+        $relative = $Matches[1]
+        $expectedHash = $Matches[2].ToLowerInvariant()
+        $normalized = $relative.Replace('\', '/')
+        $null = Assert-SafeArtifactPath $relative 'SBOM embedded asset'
+        if ($embeddedAssetOwners.ContainsKey($normalized)) { throw "Embedded bundle entry is multiply attributed: $relative" }
+        $embeddedAssetOwners[$normalized] = $component.'bom-ref'
+        $null = $embeddedAssetPaths.Add($normalized)
+        if ($null -eq $bundleEntries -or -not $bundleEntries.ContainsKey($normalized)) { throw "SBOM embedded asset is absent from the .NET bundle manifest: $relative" }
+        if (-not $bundleEntryHashes.ContainsKey($normalized)) { $bundleEntryHashes[$normalized] = Get-DotNetBundleEntryHash -BundlePath $executable -Entry $bundleEntries[$normalized] }
+        if ($bundleEntryHashes[$normalized] -ne $expectedHash) { throw "SBOM embedded asset hash mismatch: $relative" }
+    }
     foreach ($property in @($component.properties | Where-Object name -eq 'aaml:source-deps')) {
         if ($property.value -notmatch '^(.+)\|([0-9a-fA-F]{64})$') { throw "Invalid source deps evidence on $($component.'bom-ref'): $($property.value)" }
         $relative = $Matches[1]
         $expectedHash = $Matches[2]
-        $depsPath = Join-Path $ArtifactDirectory $relative
+        $depsPath = Assert-SafeArtifactPath $relative 'SBOM source deps'
         if (-not (Test-Path -LiteralPath $depsPath -PathType Leaf)) { throw "SBOM source deps is missing: $relative" }
         if ((Get-FileHash -LiteralPath $depsPath -Algorithm SHA256).Hash -ne $expectedHash) { throw "SBOM source deps hash mismatch: $relative" }
         $sourceDeps[$relative.ToLowerInvariant()] = $true
     }
 }
+if ($metadata.singleFile) {
+    foreach ($entry in $bundleEntries.Values) {
+        if ($entry.Path -in @('AAML.Avalonia.deps.json', 'AAML.Avalonia.runtimeconfig.json')) { continue }
+        if (-not $embeddedAssetPaths.Contains($entry.Path)) { throw "Embedded bundle entry has no SBOM owner: $($entry.Path)" }
+    }
+    $runtimeConfigPath = Assert-SafeArtifactPath 'evidence/AAML.Avalonia.runtimeconfig.json' 'packaged runtime configuration'
+    $runtimeConfig = Get-Content -LiteralPath $runtimeConfigPath -Raw | ConvertFrom-Json
+    if ($runtimeConfig.runtimeOptions.tfm -ne 'net10.0') { throw 'Single-file runtime configuration targets an unexpected framework.' }
+    $frameworks = @($runtimeConfig.runtimeOptions.includedFrameworks)
+    if ($frameworks.Count -ne 1 -or $frameworks[0].name -ne 'Microsoft.NETCore.App' -or $frameworks[0].version -notmatch '^10\.0\.\d+$') { throw 'Single-file runtime configuration has an unexpected included framework.' }
+    if ($runtimeConfig.runtimeOptions.configProperties.'System.Reflection.Metadata.MetadataUpdater.IsSupported' -ne $false -or $runtimeConfig.runtimeOptions.configProperties.'System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization' -ne $false) { throw 'Single-file runtime configuration weakens required runtime safety properties.' }
+    if (-not $bundleEntries.ContainsKey('AAML.Avalonia.runtimeconfig.json')) { throw 'Single-file bundle has no runtime configuration entry.' }
+    $runtimeConfigHash = (Get-FileHash -LiteralPath $runtimeConfigPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ((Get-DotNetBundleEntryHash -BundlePath $executable -Entry $bundleEntries['AAML.Avalonia.runtimeconfig.json']) -ne $runtimeConfigHash) { throw 'Packaged runtime configuration differs from the bundle entry.' }
+    $depsPath = Assert-SafeArtifactPath 'evidence/AAML.Avalonia.deps.json' 'packaged dependency evidence'
+    if (-not $bundleEntries.ContainsKey('AAML.Avalonia.deps.json')) { throw 'Single-file bundle has no dependency graph entry.' }
+    $depsHash = (Get-FileHash -LiteralPath $depsPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ((Get-DotNetBundleEntryHash -BundlePath $executable -Entry $bundleEntries['AAML.Avalonia.deps.json']) -ne $depsHash) { throw 'Packaged dependency evidence differs from the bundle entry.' }
+}
 foreach ($depsFile in @(Get-ChildItem -LiteralPath $ArtifactDirectory -Filter '*.deps.json' -File -Recurse)) {
     $relative = [System.IO.Path]::GetRelativePath($ArtifactDirectory, $depsFile.FullName).Replace('\', '/')
     if (-not $sourceDeps.ContainsKey($relative.ToLowerInvariant())) { throw "Shipped deps document has no SBOM provenance: $relative" }
 }
-foreach ($binary in @($files | Where-Object {
-            $_.Name -match '\.(?:dll|exe|so)$' -or ($_.Extension -eq '' -and $_.Length -ge 4 -and [Convert]::ToHexString([System.IO.File]::ReadAllBytes($_.FullName)[0..3]) -eq '7F454C46')
-        })) {
+foreach ($binary in @($files | Where-Object { Test-ArtifactBinary $_ })) {
     $relative = [System.IO.Path]::GetRelativePath($ArtifactDirectory, $binary.FullName).Replace('\', '/')
     if (-not $assetOwners.ContainsKey($relative.ToLowerInvariant())) { throw "Shipped binary has no SBOM owner: $relative" }
+}
+if ($metadata.singleFile) {
+    $looseBinaries = @($files | Where-Object { $_.FullName -ne $executable -and (Test-ArtifactBinary $_) })
+    if ($looseBinaries.Count -ne 0) { throw "Single-file package contains loose binaries: $($looseBinaries.Name -join ', ')" }
 }
 $notices = Get-Content -LiteralPath (Join-Path $ArtifactDirectory $policy.thirdPartyNotices.fileName) -Raw
 if ($notices -notmatch [regex]::Escape("Repository: $canonicalRepository") -or $notices -notmatch [regex]::Escape("Version: $($metadata.version)") -or $notices -notmatch [regex]::Escape("Commit: $($metadata.commit)")) { throw 'Third-party notices identity does not match release metadata.' }
@@ -215,11 +293,16 @@ if ([System.IO.Path]::IsPathRooted($nativeAsset.file) -or $nativeAsset.file -ne 
     throw "Steamworks manifest contains an unsafe native asset path: $($nativeAsset.file)"
 }
 $nativePath = Join-Path $ArtifactDirectory $nativeAsset.file
-if (-not (Test-Path -LiteralPath $nativePath -PathType Leaf)) { throw "Pinned Steam native asset is missing: $($nativeAsset.file)" }
-$nativeFile = Get-Item -LiteralPath $nativePath
-if ($nativeFile.Length -ne [long]$nativeAsset.size) { throw "Steam native asset size does not match steamworks-manifest.json: $($nativeAsset.file)" }
-$nativeHash = (Get-FileHash -LiteralPath $nativePath -Algorithm SHA256).Hash
-if ($nativeHash -ne $nativeAsset.sha256) { throw "Steam native asset hash does not match steamworks-manifest.json: $($nativeAsset.file)" }
+if ($metadata.singleFile) {
+    $embeddedNative = @($sbom.components | ForEach-Object { $_.properties } | Where-Object { $_.name -eq 'aaml:embedded-asset' -and $_.value -eq "$($nativeAsset.file)|$(([string]$nativeAsset.sha256).ToLowerInvariant())" })
+    if ($embeddedNative.Count -ne 1) { throw "Pinned Steam native asset has no unique embedded evidence: $($nativeAsset.file)" }
+} else {
+    if (-not (Test-Path -LiteralPath $nativePath -PathType Leaf)) { throw "Pinned Steam native asset is missing: $($nativeAsset.file)" }
+    $nativeFile = Get-Item -LiteralPath $nativePath
+    if ($nativeFile.Length -ne [long]$nativeAsset.size) { throw "Steam native asset size does not match steamworks-manifest.json: $($nativeAsset.file)" }
+    $nativeHash = (Get-FileHash -LiteralPath $nativePath -Algorithm SHA256).Hash
+    if ($nativeHash -ne $nativeAsset.sha256) { throw "Steam native asset hash does not match steamworks-manifest.json: $($nativeAsset.file)" }
+}
 
 if ($GenerateChecksums) {
     $checksumPath = Join-Path $ArtifactDirectory 'SHA256SUMS'
@@ -242,7 +325,7 @@ if ($VerifyChecksums) {
         if ($line -notmatch '^([0-9A-Fa-f]{64})  (.+)$') { throw "Invalid SHA256SUMS line: $line" }
         $expectedHash = $Matches[1]
         $relative = $Matches[2]
-        if ([System.IO.Path]::IsPathRooted($relative) -or $relative -match '(^|/)\.\.(/|$)') { throw "Unsafe SHA256SUMS path: $relative" }
+        $null = Assert-SafeArtifactPath $relative 'SHA256SUMS'
         if ($listedFiles -contains $relative) { throw "Duplicate SHA256SUMS path: $relative" }
         $listedFiles += $relative
         $path = Join-Path $ArtifactDirectory $relative

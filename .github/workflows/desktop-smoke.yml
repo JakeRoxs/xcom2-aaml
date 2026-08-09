@@ -18,9 +18,9 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
       - shell: pwsh
-        run: ./eng/stage-aaml-package.ps1 -Rid 'win-x64' -OutputDirectory '${{ runner.temp }}/AAML Desktop Smoke/win-x64' -Version '0.0.0-smoke.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}'
+        run: ./eng/stage-aaml-package.ps1 -Rid 'win-x64' -OutputDirectory '${{ runner.temp }}/AAML Desktop Smoke/win-x64' -Version '0.0.0-smoke.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -WindowsSingleFile
       - shell: pwsh
-        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Desktop Smoke/win-x64' -ManifestPath '${{ github.workspace }}/eng/package-manifests/aaml-win-x64.json' -GenerateChecksums
+        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Desktop Smoke/win-x64' -ManifestPath '${{ github.workspace }}/eng/package-manifests/aaml-win-x64-single-file.json' -GenerateChecksums
       - shell: pwsh
         run: ./eng/run-windows-desktop-smoke.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Desktop Smoke/win-x64' -EvidenceDirectory '${{ runner.temp }}/AAML Desktop Smoke/evidence'
       - if: always()

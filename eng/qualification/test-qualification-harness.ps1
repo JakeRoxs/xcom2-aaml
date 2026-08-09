@@ -7,7 +7,7 @@ try {
     $extract = Join-Path $root 'extract'
     New-Item -ItemType Directory -Path $payload -Force | Out-Null
     'fixture' | Set-Content -LiteralPath (Join-Path $payload 'fixture.txt') -Encoding ascii
-    [ordered]@{ schemaVersion = 1; rid = 'win-x64'; version = '1.2.3'; repository = 'https://github.com/JakeRoxs/xcom2-aaml'; commit = '0123456789abcdef0123456789abcdef01234567'; selfContained = $true } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $payload 'release-metadata.json') -Encoding utf8
+    [ordered]@{ schemaVersion = 1; rid = 'win-x64'; version = '1.2.3'; repository = 'https://github.com/JakeRoxs/xcom2-aaml'; commit = '0123456789abcdef0123456789abcdef01234567'; selfContained = $true; singleFile = $false; trimmed = $false; nativeAot = $false } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $payload 'release-metadata.json') -Encoding utf8
     $checksumLines = Get-ChildItem -LiteralPath $payload -File | ForEach-Object { "$(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 | Select-Object -ExpandProperty Hash)  $($_.Name)" }
     $checksumLines | Set-Content -LiteralPath (Join-Path $payload 'SHA256SUMS') -Encoding ascii
     $archive = Join-Path $root 'fixture.zip'

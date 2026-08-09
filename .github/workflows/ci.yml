@@ -134,6 +134,22 @@ jobs:
       - name: Extract and revalidate archive
         shell: pwsh
         run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-${{ matrix.rid }}${{ matrix.rid == 'win-x64' && '.zip' || '.tar.gz' }}' -Rid '${{ matrix.rid }}' -ManifestPath '${{ matrix.manifest }}' -ExtractionDirectory '${{ runner.temp }}/AAML Extracted/${{ matrix.rid }}'
+      - if: matrix.rid == 'win-x64'
+        name: Stage clean Windows single-file candidate
+        shell: pwsh
+        run: ./eng/stage-aaml-package.ps1 -Rid 'win-x64' -OutputDirectory '${{ runner.temp }}/AAML Single File/win-x64' -Version '0.0.0-ci.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -WindowsSingleFile -VerifyTrackedSourceInputs
+      - if: matrix.rid == 'win-x64'
+        name: Validate clean Windows single-file candidate
+        shell: pwsh
+        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Single File/win-x64' -ManifestPath 'eng/package-manifests/aaml-win-x64-single-file.json' -GenerateChecksums
+      - if: matrix.rid == 'win-x64'
+        name: Archive clean Windows single-file candidate
+        shell: pwsh
+        run: Compress-Archive -Path '${{ runner.temp }}/AAML Single File/win-x64' -DestinationPath '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-win-x64-single-file.zip'
+      - if: matrix.rid == 'win-x64'
+        name: Extract and revalidate single-file candidate
+        shell: pwsh
+        run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-win-x64-single-file.zip' -Rid 'win-x64' -ManifestPath 'eng/package-manifests/aaml-win-x64-single-file.json' -ExtractionDirectory '${{ runner.temp }}/AAML Single File Extracted/win-x64'
       - uses: actions/upload-artifact@v7
         with:
           name: AAML-0.0.0-ci.${{ github.run_number }}-${{ matrix.rid }}
