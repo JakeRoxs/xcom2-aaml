@@ -70,8 +70,12 @@ jobs:
         include:
           - rid: win-x64
             os: windows-latest
+            manifest: eng/package-manifests/aaml-win-x64-single-file.json
+            singleFile: true
           - rid: linux-x64
             os: ubuntu-latest
+            manifest: eng/package-manifests/aaml-linux-x64.json
+            singleFile: false
     steps:
       - uses: actions/checkout@v7
         with:
@@ -114,13 +118,14 @@ jobs:
           -Version '${{ needs.provenance.outputs.version }}'
           -Repository '${{ github.repository }}'
           -Commit '${{ github.sha }}'
+          -WindowsSingleFile:${{ matrix.singleFile && '$true' || '$false' }}
           -VerifyTrackedSourceInputs
       - name: Validate unsigned staged payload
         shell: pwsh
         run: >-
           ./eng/validate-aaml-artifact.ps1
           -ArtifactDirectory '${{ runner.temp }}/AAML Stage/${{ matrix.rid }}'
-          -ManifestPath '${{ github.workspace }}/eng/package-manifests/aaml-${{ matrix.rid }}.json'
+          -ManifestPath '${{ github.workspace }}/${{ matrix.manifest }}'
       - if: matrix.rid == 'linux-x64'
         name: Archive Linux staged payload for transport
         shell: bash
@@ -161,13 +166,13 @@ jobs:
           path: ${{ runner.temp }}/AAML Stage
       - name: Official validation and checksums
         shell: pwsh
-        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Stage/win-x64' -ManifestPath './eng/package-manifests/aaml-win-x64.json' -GenerateChecksums -OfficialRelease
+        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Stage/win-x64' -ManifestPath './eng/package-manifests/aaml-win-x64-single-file.json' -GenerateChecksums -OfficialRelease
       - name: Archive unsigned payload
         shell: pwsh
         run: Compress-Archive -LiteralPath '${{ runner.temp }}/AAML Stage/win-x64' -DestinationPath '${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip'
       - name: Extract and revalidate exact archive
         shell: pwsh
-        run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip' -Rid win-x64 -ManifestPath './eng/package-manifests/aaml-win-x64.json' -ExtractionDirectory '${{ runner.temp }}/AAML Roundtrip/win-x64' -OfficialRelease
+        run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip' -Rid win-x64 -ManifestPath './eng/package-manifests/aaml-win-x64-single-file.json' -ExtractionDirectory '${{ runner.temp }}/AAML Roundtrip/win-x64' -OfficialRelease
       - name: Attest final Windows archive
         uses: actions/attest-build-provenance@v4
         with:

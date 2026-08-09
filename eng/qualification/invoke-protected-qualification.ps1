@@ -73,7 +73,8 @@ foreach ($item in $stateItems) {
 $archive = & (Join-Path $PSScriptRoot 'assert-exact-artifact.ps1') -ArchivePath $ArchivePath -ExpectedArchiveSha256 $ExpectedArchiveSha256 -ExpectedRepository $ExpectedRepository -ExpectedCommit $ExpectedCommit -ExpectedVersion $ExpectedVersion -ExtractionDirectory (Join-Path $WorkDirectory 'extracted')
 $expectedRid = if ($Scenario -eq 'linux-proton') { 'linux-x64' } else { 'win-x64' }
 if ($archive.rid -cne $expectedRid) { throw "Scenario $Scenario requires $expectedRid, not $($archive.rid)." }
-$manifest = Join-Path (Split-Path -Parent $PSScriptRoot) "package-manifests/aaml-$expectedRid.json"
+$manifestName = if ($expectedRid -eq 'win-x64') { 'aaml-win-x64-single-file.json' } else { 'aaml-linux-x64.json' }
+$manifest = Join-Path (Split-Path -Parent $PSScriptRoot) "package-manifests/$manifestName"
 & (Join-Path (Split-Path -Parent $PSScriptRoot) 'validate-aaml-artifact.ps1') -ArtifactDirectory $archive.artifactDirectory -ManifestPath $manifest -VerifyChecksums
 if (-not $?) { throw 'Extracted package policy validation failed.' }
 

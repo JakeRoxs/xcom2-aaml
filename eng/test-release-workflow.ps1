@@ -25,6 +25,8 @@ Assert-Match $workflow 'actions/attest-build-provenance@' 'Final archives must r
 Assert-Match $workflow '-OfficialRelease' 'Both final artifacts must run official validation.'
 Assert-Match $workflow 'test-aaml-archive\.ps1' 'Final archives must be extracted and revalidated.'
 Assert-Match $workflow 'test-brand-assets\.ps1' 'Release staging must verify deterministic first-party brand assets.'
+Assert-Match $workflow 'WindowsSingleFile:' 'Official Windows staging must enable the clean single-file package.'
+Assert-Match $workflow 'aaml-win-x64-single-file\.json' 'Official Windows finalization must validate the clean single-file manifest.'
 Assert-Match $workflow "tar -C '\$\{\{ runner\.temp \}\}/AAML Stage' -czf '\$\{\{ runner\.temp \}\}/AAML-stage-linux-x64\.tar\.gz' linux-x64" 'Linux stage transport must preserve permissions in a tar archive.'
 Assert-Match $workflow 'archive:\s*false' 'Linux stage tar must be uploaded without a permission-losing wrapper archive.'
 Assert-Match $workflow 'name:\s*AAML-stage-linux-x64\.tar\.gz' 'Linux finalization must download the filename-derived unwrapped artifact name.'

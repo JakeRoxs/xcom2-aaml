@@ -68,10 +68,12 @@ jobs:
         include:
           - os: windows-latest
             rid: win-x64
-            manifest: eng/package-manifests/aaml-win-x64.json
+            manifest: eng/package-manifests/aaml-win-x64-single-file.json
+            singleFile: true
           - os: ubuntu-latest
             rid: linux-x64
             manifest: eng/package-manifests/aaml-linux-x64.json
+            singleFile: false
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -82,9 +84,9 @@ jobs:
       - name: Verify package policy inputs are tracked
         shell: pwsh
         run: |
-          git ls-files --error-unmatch eng/package-manifests/aaml-${{ matrix.rid }}.json
+          git ls-files --error-unmatch '${{ matrix.manifest }}'
           if ($LASTEXITCODE -ne 0) { throw 'Package manifest is not tracked.' }
-          git check-ignore eng/package-manifests/aaml-${{ matrix.rid }}.json
+          git check-ignore '${{ matrix.manifest }}'
           if ($LASTEXITCODE -eq 0) { throw 'Package manifest is ignored.' }
           git ls-files --error-unmatch eng/release-supply-chain-policy.json eng/generate-release-evidence.ps1 eng/test-release-evidence.ps1 eng/test-release-license-catalog.ps1 eng/license-sources eng/license-texts
           if ($LASTEXITCODE -ne 0) { throw 'Release supply-chain policy inputs are not tracked.' }
@@ -106,7 +108,7 @@ jobs:
           desktop-file-validate eng/linux/io.github.jakeroxs.xcom2_aaml.desktop
           appstreamcli validate --pedantic eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml
       - shell: pwsh
-        run: ./eng/stage-aaml-package.ps1 -Rid '${{ matrix.rid }}' -OutputDirectory '${{ runner.temp }}/AAML Package/${{ matrix.rid }}' -Version '0.0.0-ci.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -VerifyTrackedSourceInputs
+        run: ./eng/stage-aaml-package.ps1 -Rid '${{ matrix.rid }}' -OutputDirectory '${{ runner.temp }}/AAML Package/${{ matrix.rid }}' -Version '0.0.0-ci.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -WindowsSingleFile:${{ matrix.singleFile && '$true' || '$false' }} -VerifyTrackedSourceInputs
       - shell: pwsh
         run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Package/${{ matrix.rid }}' -ManifestPath '${{ matrix.manifest }}' -GenerateChecksums
       - if: matrix.rid == 'linux-x64'
@@ -134,22 +136,6 @@ jobs:
       - name: Extract and revalidate archive
         shell: pwsh
         run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-${{ matrix.rid }}${{ matrix.rid == 'win-x64' && '.zip' || '.tar.gz' }}' -Rid '${{ matrix.rid }}' -ManifestPath '${{ matrix.manifest }}' -ExtractionDirectory '${{ runner.temp }}/AAML Extracted/${{ matrix.rid }}'
-      - if: matrix.rid == 'win-x64'
-        name: Stage clean Windows single-file candidate
-        shell: pwsh
-        run: ./eng/stage-aaml-package.ps1 -Rid 'win-x64' -OutputDirectory '${{ runner.temp }}/AAML Single File/win-x64' -Version '0.0.0-ci.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -WindowsSingleFile -VerifyTrackedSourceInputs
-      - if: matrix.rid == 'win-x64'
-        name: Validate clean Windows single-file candidate
-        shell: pwsh
-        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Single File/win-x64' -ManifestPath 'eng/package-manifests/aaml-win-x64-single-file.json' -GenerateChecksums
-      - if: matrix.rid == 'win-x64'
-        name: Archive clean Windows single-file candidate
-        shell: pwsh
-        run: Compress-Archive -Path '${{ runner.temp }}/AAML Single File/win-x64' -DestinationPath '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-win-x64-single-file.zip'
-      - if: matrix.rid == 'win-x64'
-        name: Extract and revalidate single-file candidate
-        shell: pwsh
-        run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-win-x64-single-file.zip' -Rid 'win-x64' -ManifestPath 'eng/package-manifests/aaml-win-x64-single-file.json' -ExtractionDirectory '${{ runner.temp }}/AAML Single File Extracted/win-x64'
       - uses: actions/upload-artifact@v7
         with:
           name: AAML-0.0.0-ci.${{ github.run_number }}-${{ matrix.rid }}
