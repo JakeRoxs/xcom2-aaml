@@ -81,6 +81,7 @@ public sealed partial class App : global::Avalonia.Application
         services.AddSingleton<IProfileDocumentTransfer>(_ => new AvaloniaProfileDocumentTransfer(() => (Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow));
         services.AddSingleton<IApplicationUiController, ApplicationUiController>();
         services.AddSingleton<ILaunchArgumentPresetService, LaunchArgumentPresetService>();
+        services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
         services.AddSingleton<ApplicationSession>();
 
         provider = services.BuildServiceProvider();

@@ -15,8 +15,8 @@ public sealed class AutoSaveCoordinator : IDisposable
     private bool enabled;
     private bool disposed;
 
-    public void Register(string owner, Func<bool> isDirty, Func<CancellationToken, Task<Result>> save) =>
-        registrations[owner] = new Registration(isDirty, save);
+    public void Register(string owner, Func<bool> isDirty, Func<CancellationToken, Task<Result>> save, Func<CancellationToken, Task<bool>>? isDirtyAsync = null) =>
+        registrations[owner] = new Registration(isDirty, isDirtyAsync ?? (_ => Task.FromResult(isDirty())), save);
 
     public void SetEnabled(bool value)
     {
@@ -52,10 +52,13 @@ public sealed class AutoSaveCoordinator : IDisposable
         _ = RunDelayedAsync(owner, source);
     }
 
-    public async Task<Result> FlushActiveAsync(CancellationToken cancellationToken) =>
-        activeOwner is { } owner && registrations.GetValueOrDefault(owner)?.IsDirty() == true
+    public async Task<Result> FlushActiveAsync(CancellationToken cancellationToken)
+    {
+        if (activeOwner is not { } owner || registrations.GetValueOrDefault(owner) is not { } registration) return Result.Success();
+        return await registration.IsDirtyAsync(cancellationToken).ConfigureAwait(false)
             ? await FlushAsync(owner, cancellationToken).ConfigureAwait(false)
             : Result.Success();
+    }
 
     public async Task<Result> FlushAsync(string owner, CancellationToken cancellationToken)
     {
@@ -98,7 +101,7 @@ public sealed class AutoSaveCoordinator : IDisposable
             {
                 if (pending.GetValueOrDefault(owner) == source) pending.Remove(owner);
             }
-            if (registrations.TryGetValue(owner, out var registration) && registration.IsDirty())
+            if (registrations.TryGetValue(owner, out var registration) && await registration.IsDirtyAsync(source.Token).ConfigureAwait(false))
                 await registration.Save(source.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (source.IsCancellationRequested) { }
@@ -122,5 +125,5 @@ public sealed class AutoSaveCoordinator : IDisposable
         saveGate.Dispose();
     }
 
-    private sealed record Registration(Func<bool> IsDirty, Func<CancellationToken, Task<Result>> Save);
+    private sealed record Registration(Func<bool> IsDirty, Func<CancellationToken, Task<bool>> IsDirtyAsync, Func<CancellationToken, Task<Result>> Save);
 }

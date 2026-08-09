@@ -307,6 +307,31 @@ public sealed class ApplicationSessionActivationTests
     }
 
     [TestMethod]
+    public async Task DebouncedWorkerSave_ProjectsRowsThroughUiDispatcher()
+    {
+        var dispatcher = new RecordingUiDispatcher();
+        var fixture = new SessionFixture(autoSave: true, uiDispatcher: dispatcher);
+        (await fixture.Session.InitializeAsync(TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
+        var collectionChanges = 0;
+        var escapedDispatcher = false;
+        fixture.Session.ModRows.CollectionChanged += (_, _) =>
+        {
+            collectionChanges++;
+            escapedDispatcher |= !dispatcher.IsInvoking;
+        };
+        fixture.Session.ActivateAutoSaveOwner("mods");
+        fixture.Session.ModRows.Single(item => item.Key == fixture.First.Key).IsActive = true;
+
+        await WaitUntilAsync(() => fixture.SettingsRepository.SaveCount == 1 && fixture.Session.Status.StartsWith("Saved", StringComparison.Ordinal));
+
+        fixture.Session.ModRows.Should().Contain(item => item.Key == fixture.First.Key && item.IsActive == true);
+        fixture.Session.HasUnsavedModDrafts.Should().BeFalse();
+        collectionChanges.Should().BeGreaterThan(0);
+        escapedDispatcher.Should().BeFalse();
+        dispatcher.AsyncInvocations.Should().BeGreaterThan(0);
+    }
+
+    [TestMethod]
     public async Task EnablingAutoSave_PersistsPreferenceAndFlushesCurrentDraft()
     {
         var fixture = new SessionFixture();
@@ -585,7 +610,7 @@ public sealed class ApplicationSessionActivationTests
 
     private sealed class SessionFixture
     {
-        public SessionFixture(bool duplicatePackages = false, bool previewFlow = false, WorkshopStartupRefreshPolicy workshopPolicy = WorkshopStartupRefreshPolicy.AllMods, bool navigationRailSaveFails = false, NavigationRailMode navigationRailMode = NavigationRailMode.Expanded, bool delayDiscovery = false, bool autoSave = false, bool modSaveFails = false, TaskCompletionSource? modSaveRelease = null, TimeSpan? modSaveDelay = null)
+        public SessionFixture(bool duplicatePackages = false, bool previewFlow = false, WorkshopStartupRefreshPolicy workshopPolicy = WorkshopStartupRefreshPolicy.AllMods, bool navigationRailSaveFails = false, NavigationRailMode navigationRailMode = NavigationRailMode.Expanded, bool delayDiscovery = false, bool autoSave = false, bool modSaveFails = false, TaskCompletionSource? modSaveRelease = null, TimeSpan? modSaveDelay = null, IUiDispatcher? uiDispatcher = null)
         {
             First = previewFlow
                 ? new ModInstallation(new(ModSource.SteamWorkshop, "C:\\Mods\\first"), new("First"), "First", new WorkshopId(42), false, DescriptorState.Enabled, null,
@@ -675,7 +700,8 @@ public sealed class ApplicationSessionActivationTests
                 [typeof(IModDuplicateAnalyzer)] = new ModDuplicateAnalyzer(), [typeof(IApplicationDiagnostics)] = diagnostics.Object,
                 [typeof(IWorkshopService)] = workshop.Object, [typeof(IWorkshopPreviewCache)] = previewCache.Object,
                 [typeof(IWorkshopOperationCoordinator)] = workshopOperations.Object,
-                [typeof(IExistingModRootPreviewGuard)] = RootGuard
+                [typeof(IExistingModRootPreviewGuard)] = RootGuard,
+                [typeof(IUiDispatcher)] = uiDispatcher ?? new InlineUiDispatcher()
             };
             var constructor = typeof(ApplicationSession).GetConstructors().Single();
             Session = (ApplicationSession)constructor.Invoke(constructor.GetParameters().Select(parameter => services.GetValueOrDefault(parameter.ParameterType) ?? MockObject(parameter.ParameterType)).ToArray());
@@ -708,6 +734,13 @@ public sealed class ApplicationSessionActivationTests
 
         private readonly TaskCompletionSource discoveryRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        private sealed class InlineUiDispatcher : IUiDispatcher
+        {
+            public void Invoke(Action action) => action();
+            public Task InvokeAsync(Action action, CancellationToken cancellationToken) { action(); return Task.CompletedTask; }
+            public Task<T> InvokeAsync<T>(Func<T> action, CancellationToken cancellationToken) => Task.FromResult(action());
+        }
+
         private static Result<ModConflictReport> EmptyConflicts() => Result<ModConflictReport>.Success(new([], new HashSet<string>()));
         private static ModInstallation Installation(string location, string package) => new(new(ModSource.Manual, location), new(package), package, null, false, DescriptorState.Enabled, null);
         private static object MockObject(Type type)
@@ -722,6 +755,37 @@ public sealed class ApplicationSessionActivationTests
         var deadline = DateTimeOffset.UtcNow.AddSeconds(3);
         while (!predicate() && DateTimeOffset.UtcNow < deadline) await Task.Delay(20);
         predicate().Should().BeTrue("the asynchronous operation should complete before the test timeout");
+    }
+
+    private sealed class RecordingUiDispatcher : IUiDispatcher
+    {
+        private int invokeDepth;
+        private int asyncInvocations;
+
+        public bool IsInvoking => Volatile.Read(ref invokeDepth) > 0;
+        public int AsyncInvocations => Volatile.Read(ref asyncInvocations);
+
+        public void Invoke(Action action)
+        {
+            Interlocked.Increment(ref invokeDepth);
+            try { action(); }
+            finally { Interlocked.Decrement(ref invokeDepth); }
+        }
+
+        public Task InvokeAsync(Action action, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref asyncInvocations);
+            Invoke(action);
+            return Task.CompletedTask;
+        }
+
+        public Task<T> InvokeAsync<T>(Func<T> action, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref asyncInvocations);
+            T? result = default;
+            Invoke(() => result = action());
+            return Task.FromResult(result!);
+        }
     }
 
     private sealed class RecordingSettingsRepository(bool fail = false, TaskCompletionSource? release = null, TimeSpan? delay = null) : ISettingsRepository

@@ -24,7 +24,7 @@ using AAML.Application.Logging;
 
 namespace AAML.Avalonia;
 
-public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModCatalogSource catalog, IGameLaunchCoordinator launchCoordinator, IGameConfigurationWriter configurationWriter, ISteamSettingsIntegrator steamSettings, IModIntentService modIntents, IProfileService profileService, IProfileInterchange profileInterchange, ILegacyProfileImportService legacyProfileImport, IModDependencyService dependencies, IModMetadataService metadataService, IModConflictService conflictService, IConfigurationDocumentCatalog configurationCatalog, IWorkshopOperationCoordinator workshopOperations, IWorkshopSubscriptionCoordinator subscriptions, IModRemovalFilesystem removalFilesystem, IModDuplicateAnalyzer duplicateAnalyzer, IDuplicatePreferenceService duplicatePreferences, IWorkshopService workshopService, IWorkshopPreviewCache workshopPreviewCache, IUpdateCheckService updateChecks, IApplicationDiagnostics diagnostics, IExistingModRootPreviewGuard modRootPreviewGuard) : ReactiveObject, IDisposable
+public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModCatalogSource catalog, IGameLaunchCoordinator launchCoordinator, IGameConfigurationWriter configurationWriter, ISteamSettingsIntegrator steamSettings, IModIntentService modIntents, IProfileService profileService, IProfileInterchange profileInterchange, ILegacyProfileImportService legacyProfileImport, IModDependencyService dependencies, IModMetadataService metadataService, IModConflictService conflictService, IConfigurationDocumentCatalog configurationCatalog, IWorkshopOperationCoordinator workshopOperations, IWorkshopSubscriptionCoordinator subscriptions, IModRemovalFilesystem removalFilesystem, IModDuplicateAnalyzer duplicateAnalyzer, IDuplicatePreferenceService duplicatePreferences, IWorkshopService workshopService, IWorkshopPreviewCache workshopPreviewCache, IUpdateCheckService updateChecks, IApplicationDiagnostics diagnostics, IExistingModRootPreviewGuard modRootPreviewGuard, IUiDispatcher uiDispatcher) : ReactiveObject, IDisposable
 {
     private const string ModsAutoSaveOwner = "mods";
     private readonly SemaphoreSlim initialization = new(1, 1);
@@ -62,15 +62,15 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     public ApplicationSettings? Settings
     {
         get => settings;
-        private set
+        private set => uiDispatcher.Invoke(() =>
         {
             if (ReferenceEquals(settings, value)) return;
             modRootPreviewGuard.Clear();
             this.RaiseAndSetIfChanged(ref settings, value);
-        }
+        });
     }
-    public SettingsOrigin? Origin { get => origin; private set => this.RaiseAndSetIfChanged(ref origin, value); }
-    public string Status { get => status; private set => this.RaiseAndSetIfChanged(ref status, value); }
+    public SettingsOrigin? Origin { get => origin; private set => uiDispatcher.Invoke(() => this.RaiseAndSetIfChanged(ref origin, value)); }
+    public string Status { get => status; private set => uiDispatcher.Invoke(() => this.RaiseAndSetIfChanged(ref status, value)); }
     public ObservableCollection<SessionModRow> ModRows { get; } = [];
     public ObservableCollection<SessionProfile> Profiles { get; } = [];
     public ObservableCollection<SessionConflict> Conflicts { get; } = [];
@@ -78,7 +78,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     public bool HasFocusedMods => focusedModKeys.Count > 0;
     public int UnsavedModDraftCount => Settings is null ? 0 : modDrafts.Values.Count(IsUnsavedDraft);
     public bool HasUnsavedModDrafts => UnsavedModDraftCount > 0;
-    public WorkshopAvailability WorkshopAvailability { get => workshopAvailability; private set => this.RaiseAndSetIfChanged(ref workshopAvailability, value); }
+    public WorkshopAvailability WorkshopAvailability { get => workshopAvailability; private set => uiDispatcher.Invoke(() => this.RaiseAndSetIfChanged(ref workshopAvailability, value)); }
     public bool IsWorkshopBusy => workshopGate.CurrentCount == 0;
     public IReadOnlyList<Category> Categories => Settings?.Categories ?? [];
     public IReadOnlyList<Tag> Tags => Settings?.Tags ?? [];
@@ -122,7 +122,8 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
             groupModsByCategory = grid.GroupByCategory;
             collapsedModGroups.Clear(); foreach (var key in grid.CollapsedGroups) collapsedModGroups.Add(key);
             autoSave.SetEnabled(Settings.AutoSaveChanges);
-            autoSave.Register(ModsAutoSaveOwner, () => HasUnsavedModDrafts || modGridRevision != 0, SaveModsOwnedDraftsAsync);
+            autoSave.Register(ModsAutoSaveOwner, () => HasUnsavedModDrafts || modGridRevision != 0, SaveModsOwnedDraftsAsync,
+                token => uiDispatcher.InvokeAsync(() => HasUnsavedModDrafts || modGridRevision != 0, token));
             initialized = true;
             Status = $"Settings {Origin}";
             if (string.IsNullOrWhiteSpace(Settings.GameInstallationLocation))
@@ -260,6 +261,11 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public void ProjectMods(string searchText, bool groupByCategory)
     {
+        uiDispatcher.Invoke(() => ProjectModsCore(searchText, groupByCategory));
+    }
+
+    private void ProjectModsCore(string searchText, bool groupByCategory)
+    {
         if (Settings is null) return;
         modSearchText = searchText ?? string.Empty;
         groupModsByCategory = groupByCategory;
@@ -321,11 +327,27 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> SaveModGridPreferencesAsync(CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
-        var revision = modGridRevision;
-        var result = await autoSave.SerializeAsync(token => bootstrapper.SaveModGridPreferencesAsync(Settings, new ModGridPreferences(includeHidden, modStateFilter, groupModsByCategory, collapsedModGroups.ToHashSet()), token), cancellationToken);
-        if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
-        Settings = result.Value; if (revision == modGridRevision) modGridRevision = 0; Status = "Mod view saved"; return Result.Success();
+        return await autoSave.SerializeAsync(async token =>
+        {
+            var capture = await uiDispatcher.InvokeAsync(() => Settings is null
+                ? null
+                : new ModGridSaveCapture(Settings, modGridRevision, new ModGridPreferences(includeHidden, modStateFilter, groupModsByCategory, collapsedModGroups.ToHashSet())), token).ConfigureAwait(false);
+            if (capture is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+            var result = await bootstrapper.SaveModGridPreferencesAsync(capture.Settings, capture.Preferences, token).ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                var error = result.Error!;
+                await uiDispatcher.InvokeAsync(() => Status = error.Message, token).ConfigureAwait(false);
+                return Result.Failure(error);
+            }
+            await uiDispatcher.InvokeAsync(() =>
+            {
+                Settings = result.Value;
+                if (capture.Revision == modGridRevision) modGridRevision = 0;
+                Status = "Mod view saved";
+            }, token).ConfigureAwait(false);
+            return Result.Success();
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<Result> SetNavigationRailModeAsync(NavigationRailMode mode, CancellationToken cancellationToken)
@@ -426,35 +448,58 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     private async Task<Result> SaveModsOwnedDraftsAsync(CancellationToken cancellationToken)
     {
-        if (HasUnsavedModDrafts)
+        if (await uiDispatcher.InvokeAsync(() => HasUnsavedModDrafts, cancellationToken).ConfigureAwait(false))
         {
             var mods = await autoSave.SerializeAsync(SaveModDraftSnapshotAsync, cancellationToken).ConfigureAwait(false);
             if (!mods.IsSuccess) return mods;
         }
-        return modGridRevision == 0 ? Result.Success() : await SaveModGridPreferencesAsync(cancellationToken).ConfigureAwait(false);
+        var gridDirty = await uiDispatcher.InvokeAsync(() => modGridRevision != 0, cancellationToken).ConfigureAwait(false);
+        return gridDirty ? await SaveModGridPreferencesAsync(cancellationToken).ConfigureAwait(false) : Result.Success();
     }
 
     private async Task<Result> SaveModDraftSnapshotAsync(CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
-        Status = "Saving mod activation and load order";
-        var revision = modDraftRevision;
-        var snapshot = modDrafts.Values.ToArray();
-        var validation = ModDuplicateActivationPolicy.Validate(discoveredMods, snapshot, duplicateReport);
-        if (!validation.IsSuccess) { Status = validation.Error!.Message; return validation; }
-        var result = await modIntents.SaveAsync(Settings, snapshot, cancellationToken).ConfigureAwait(false);
-        if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
+        var capture = await uiDispatcher.InvokeAsync(() => Settings is null
+            ? null
+            : new ModDraftSaveCapture(Settings, modDraftRevision, modDrafts.Values.ToArray(), discoveredMods.ToArray(), duplicateReport), cancellationToken).ConfigureAwait(false);
+        if (capture is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        await uiDispatcher.InvokeAsync(() => Status = "Saving mod activation and load order", cancellationToken).ConfigureAwait(false);
+        var validation = ModDuplicateActivationPolicy.Validate(capture.DiscoveredMods, capture.Drafts, capture.DuplicateReport);
+        if (!validation.IsSuccess)
+        {
+            await uiDispatcher.InvokeAsync(() => Status = validation.Error!.Message, cancellationToken).ConfigureAwait(false);
+            return validation;
+        }
+        var result = await modIntents.SaveAsync(capture.Settings, capture.Drafts, cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            var error = result.Error!;
+            await uiDispatcher.InvokeAsync(() => Status = error.Message, cancellationToken).ConfigureAwait(false);
+            return Result.Failure(error);
+        }
         var updated = result.Value!;
-        Settings = updated;
-        RaiseDraftStateChanged();
+        await uiDispatcher.InvokeAsync(() =>
+        {
+            Settings = updated;
+            RaiseDraftStateChanged();
+        }, cancellationToken).ConfigureAwait(false);
         await RefreshDependencyStatusesAsync(cancellationToken);
-        var conflictResult = await conflictService.SetActiveAsync(ActiveModKeys(), cancellationToken);
-        if (!conflictResult.IsSuccess) { Status = conflictResult.Error!.Message; return Result.Failure(conflictResult.Error); }
-        ApplyConflicts(conflictResult.Value!);
-        Status = revision == modDraftRevision
-            ? $"Saved {updated.ModIntents.Count(intent => intent.IsActive):N0} active mods"
-            : $"Saved an earlier mod snapshot; {UnsavedModDraftCount:N0} newer edit{(UnsavedModDraftCount == 1 ? string.Empty : "s")} remain unsaved";
-        ProjectMods(modSearchText, groupModsByCategory);
+        var activeKeys = await uiDispatcher.InvokeAsync(ActiveModKeys, cancellationToken).ConfigureAwait(false);
+        var conflictResult = await conflictService.SetActiveAsync(activeKeys, cancellationToken).ConfigureAwait(false);
+        if (!conflictResult.IsSuccess)
+        {
+            var error = conflictResult.Error!;
+            await uiDispatcher.InvokeAsync(() => Status = error.Message, cancellationToken).ConfigureAwait(false);
+            return Result.Failure(error);
+        }
+        await uiDispatcher.InvokeAsync(() =>
+        {
+            ApplyConflictsCore(conflictResult.Value!);
+            Status = capture.Revision == modDraftRevision
+                ? $"Saved {updated.ModIntents.Count(intent => intent.IsActive):N0} active mods"
+                : $"Saved an earlier mod snapshot; {UnsavedModDraftCount:N0} newer edit{(UnsavedModDraftCount == 1 ? string.Empty : "s")} remain unsaved";
+            ProjectModsCore(modSearchText, groupModsByCategory);
+        }, cancellationToken).ConfigureAwait(false);
         return Result.Success();
     }
 
@@ -794,8 +839,11 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     private void RaiseDraftStateChanged()
     {
-        this.RaisePropertyChanged(nameof(UnsavedModDraftCount));
-        this.RaisePropertyChanged(nameof(HasUnsavedModDrafts));
+        uiDispatcher.Invoke(() =>
+        {
+            this.RaisePropertyChanged(nameof(UnsavedModDraftCount));
+            this.RaisePropertyChanged(nameof(HasUnsavedModDrafts));
+        });
     }
 
     private Result<int> BulkActivationFailure(string code, string message)
@@ -1028,6 +1076,11 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     private void ApplyConflicts(ModConflictReport report)
     {
+        uiDispatcher.Invoke(() => ApplyConflictsCore(report));
+    }
+
+    private void ApplyConflictsCore(ModConflictReport report)
+    {
         conflictingMods.Clear();
         Conflicts.Clear();
         var names = discoveredMods.ToDictionary(mod => mod.Key, mod => mod.Name);
@@ -1112,14 +1165,19 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     private async Task RefreshDependencyStatusesAsync(CancellationToken cancellationToken)
     {
-        dependencyStatuses.Clear();
-        if (Settings is null) return;
-        var installations = discoveredMods.ToDictionary(mod => mod.Key);
-        var activeIntents = Settings.ModIntents.Where(intent => intent.IsActive && installations.ContainsKey(intent.Mod)).ToArray();
+        var input = await uiDispatcher.InvokeAsync(() => Settings is null ? null : new DependencyStatusInput(Settings, discoveredMods.ToArray()), cancellationToken).ConfigureAwait(false);
+        if (input is null) return;
+        var statuses = new Dictionary<ModKey, DependencyStatus>();
+        var installations = input.DiscoveredMods.ToDictionary(mod => mod.Key);
+        var activeIntents = input.Settings.ModIntents.Where(intent => intent.IsActive && installations.ContainsKey(intent.Mod)).ToArray();
         var activeWorkshopMods = activeIntents.Select(intent => installations[intent.Mod]).Where(mod => mod.WorkshopId.HasValue).ToArray();
         var activeIds = activeWorkshopMods.Select(mod => mod.WorkshopId!.Value).ToHashSet();
-        if (activeIds.Count == 0) return;
-        var installedIds = discoveredMods.Where(mod => mod.WorkshopId.HasValue).Select(mod => mod.WorkshopId!.Value).ToHashSet();
+        if (activeIds.Count == 0)
+        {
+            await uiDispatcher.InvokeAsync(dependencyStatuses.Clear, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        var installedIds = input.DiscoveredMods.Where(mod => mod.WorkshopId.HasValue).Select(mod => mod.WorkshopId!.Value).ToHashSet();
         var ignored = activeIntents.Where(intent => installations[intent.Mod].WorkshopId.HasValue)
             .ToDictionary(intent => installations[intent.Mod].WorkshopId!.Value, intent => intent.IgnoredDependencies);
         var result = await dependencies.EvaluateAsync(activeIds, installedIds, activeIds, ignored, cancellationToken);
@@ -1128,13 +1186,22 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         {
             var id = mod.WorkshopId!.Value;
             var related = result.Value!.Issues.Where(issue => issue.Path.Count > 0 && issue.Path[0] == id).ToArray();
-            dependencyStatuses[mod.Key] = related.Any(issue => issue.Kind is ModDependencyIssueKind.Missing or ModDependencyIssueKind.Inactive)
+            statuses[mod.Key] = related.Any(issue => issue.Kind is ModDependencyIssueKind.Missing or ModDependencyIssueKind.Inactive)
                 ? DependencyStatus.Missing
                 : related.Any(issue => issue.Kind == ModDependencyIssueKind.MetadataUnavailable)
                     ? DependencyStatus.Unknown
                     : DependencyStatus.Satisfied;
         }
+        await uiDispatcher.InvokeAsync(() =>
+        {
+            dependencyStatuses.Clear();
+            foreach (var (key, status) in statuses) dependencyStatuses[key] = status;
+        }, cancellationToken).ConfigureAwait(false);
     }
+
+    private sealed record ModDraftSaveCapture(ApplicationSettings Settings, long Revision, IReadOnlyList<ModIntentEdit> Drafts, IReadOnlyList<ModInstallation> DiscoveredMods, ModDuplicateReport DuplicateReport);
+    private sealed record ModGridSaveCapture(ApplicationSettings Settings, long Revision, ModGridPreferences Preferences);
+    private sealed record DependencyStatusInput(ApplicationSettings Settings, IReadOnlyList<ModInstallation> DiscoveredMods);
 
     public void Dispose()
     {
