@@ -25,15 +25,19 @@ using AAML.Infrastructure.Common.Steam;
 using AAML.Infrastructure.Common.Files;
 using AAML.Infrastructure.Common.Configurations;
 using AAML.Infrastructure.Common.Compatibility.Profiles;
-using AAML.Infrastructure.Linux.Paths;
 using AAML.Infrastructure.Steam;
+#if !LINUX_RID
 using AAML.Infrastructure.Windows.Paths;
 using AAML.Infrastructure.Windows.Processes;
 using AAML.Infrastructure.Windows.Launching;
 using AAML.Infrastructure.Windows.Steam;
+#endif
+#if !WINDOWS_RID
+using AAML.Infrastructure.Linux.Paths;
 using AAML.Infrastructure.Linux.Steam;
 using AAML.Infrastructure.Linux.Launching;
 using AAML.Infrastructure.Linux.Processes;
+#endif
 using AAML.Application.Steam;
 using AAML.Application.Diagnostics;
 using AAML.Application.Updates;
@@ -161,6 +165,7 @@ public sealed partial class App : global::Avalonia.Application
         IPathSemantics semantics;
         if (OperatingSystem.IsWindows())
         {
+#if !LINUX_RID
             var localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
             if (string.IsNullOrWhiteSpace(localAppData)) localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             paths = new WindowsApplicationPaths(localAppData);
@@ -173,9 +178,13 @@ public sealed partial class App : global::Avalonia.Application
             services.AddSingleton<ILegacyGameConfigurationSource, WindowsLegacyGameConfigurationSource>();
             services.AddSingleton<IGameLauncher, WindowsGameLauncher>();
             services.AddSingleton<ISteamFilesystemDiscovery, WindowsSteamFilesystemDiscovery>();
+#else
+            throw new PlatformNotSupportedException("AAML currently supports Windows and native Linux.");
+#endif
         }
         else if (OperatingSystem.IsLinux())
         {
+#if !WINDOWS_RID
             var home = Environment.GetEnvironmentVariable("HOME") ?? throw new InvalidOperationException("HOME is required on Linux.");
             var options = new LinuxApplicationPathOptions(
                 home,
@@ -196,6 +205,9 @@ public sealed partial class App : global::Avalonia.Application
             services.AddSingleton<IExternalLauncher, LinuxExternalLauncher>();
             services.AddSingleton<IGameLogLocator, UnavailableGameLogLocator>();
             services.AddSingleton<IGameLauncher>(_ => new LinuxSteamGameLauncher(requestStore));
+#else
+            throw new PlatformNotSupportedException("AAML currently supports Windows and native Linux.");
+#endif
         }
         else throw new PlatformNotSupportedException("AAML currently supports Windows and native Linux.");
 
@@ -210,7 +222,7 @@ public sealed partial class App : global::Avalonia.Application
         services.AddSingleton<IAtomicTextWriter, AtomicTextWriter>();
         services.AddSingleton<ILegacySettingsImporter>(_ => new LegacySettingsFileImporter(
             [Path.Combine(AppContext.BaseDirectory, "settings.json")],
-            (_, path) => new WindowsPathSemantics().NormalizeIdentity(path),
+            (_, path) => semantics.NormalizeIdentity(path),
             Path.Combine(paths.ConfigurationDirectory, "legacy-migration-v1.json")));
         services.AddSingleton<ISettingsBootstrapper, SettingsBootstrapper>();
         services.AddSingleton<ISteamSettingsIntegrator, SteamSettingsIntegrator>();

@@ -8,6 +8,12 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <DefineConstants>$(DefineConstants);WINDOWS_RID</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+    <DefineConstants>$(DefineConstants);LINUX_RID</DefineConstants>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) ">
     <ApplicationIcon>../../assets/branding/generated/aaml.ico</ApplicationIcon>
   </PropertyGroup>
@@ -15,8 +21,8 @@
     <ProjectReference Include="../AAML.Domain/AAML.Domain.csproj" />
     <ProjectReference Include="../AAML.Application/AAML.Application.csproj" />
     <ProjectReference Include="../AAML.Infrastructure.Common/AAML.Infrastructure.Common.csproj" />
-    <ProjectReference Include="../AAML.Infrastructure.Windows/AAML.Infrastructure.Windows.csproj" />
-    <ProjectReference Include="../AAML.Infrastructure.Linux/AAML.Infrastructure.Linux.csproj" />
+    <ProjectReference Include="../AAML.Infrastructure.Windows/AAML.Infrastructure.Windows.csproj" Condition="'$(RuntimeIdentifier)' != 'linux-x64'" />
+    <ProjectReference Include="../AAML.Infrastructure.Linux/AAML.Infrastructure.Linux.csproj" Condition="'$(RuntimeIdentifier)' != 'win-x64'" />
     <ProjectReference Include="../AAML.Infrastructure.Steam/AAML.Infrastructure.Steam.csproj" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) ">
