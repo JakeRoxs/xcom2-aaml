@@ -46,6 +46,7 @@
     "AML.Infrastructure.Common",
     "AML.Infrastructure.Windows",
     "AML.Infrastructure.Linux",
-    "AML.Infrastructure.Steam"
+    "AML.Infrastructure.Steam",
+    "AAML.Infrastructure.Windows"
   ]
 }
