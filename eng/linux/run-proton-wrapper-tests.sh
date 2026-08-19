@@ -28,12 +28,34 @@ grep -Fx '&;|$() Ω' "$WORK/pass-through.txt" >/dev/null
 grep -Fx 'GUARD=1' "$WORK/pass-through.txt" >/dev/null
 
 echo "Testing recursion rejection..."
-if OUTPUT_FILE="$WORK/recursive.txt" SteamAppId=268500 XDG_RUNTIME_DIR="$WORK/runtime" AAML_STEAM_WRAPPER_ACTIVE=1 \
-  dotnet "$WRAPPER_DIR/AAML.ProtonWrapper.dll" "$WORK/capture.sh"; then
-  echo "Recursive invocation unexpectedly succeeded." >&2
-  exit 1
-fi
+set +e
+recursive_output=$(OUTPUT_FILE="$WORK/recursive.txt" SteamAppId=268500 XDG_RUNTIME_DIR="$WORK/runtime" AAML_STEAM_WRAPPER_ACTIVE=1 \
+  dotnet "$WRAPPER_DIR/AAML.ProtonWrapper.dll" "$WORK/capture.sh" 2>&1)
+recursive_code=$?
+set -e
+test "$recursive_code" -eq 78
+grep -q 'steam.launch.recursive_invocation' <<< "$recursive_output"
 test ! -e "$WORK/recursive.txt"
+
+echo "Testing deterministic argument and startup failures..."
+set +e
+unsupported_output=$(SteamAppId=1 XDG_RUNTIME_DIR="$WORK/runtime" dotnet "$WRAPPER_DIR/AAML.ProtonWrapper.dll" "$WORK/capture.sh" 2>&1)
+unsupported_code=$?
+runtime_output=$(SteamAppId=268500 env -u XDG_RUNTIME_DIR -u AAML_RUNTIME_DIR dotnet "$WRAPPER_DIR/AAML.ProtonWrapper.dll" "$WORK/capture.sh" 2>&1)
+runtime_code=$?
+exec_output=$(SteamAppId=268500 XDG_RUNTIME_DIR="$WORK/runtime" dotnet "$WRAPPER_DIR/AAML.ProtonWrapper.dll" "$WORK/missing-command" 2>&1)
+exec_code=$?
+probe_output=$(dotnet "$WRAPPER_DIR/AAML.ProtonWrapper.dll" --steam-probe --workshop-id=invalid 2>&1)
+probe_code=$?
+set -e
+test "$unsupported_code" -eq 78
+grep -q 'steam.launch.app_id_missing' <<< "$unsupported_output"
+test "$runtime_code" -eq 75
+grep -q 'steam.launch.runtime_unavailable' <<< "$runtime_output"
+test "$exec_code" -eq 126
+grep -q 'steam.launch.exec_failed' <<< "$exec_output"
+test "$probe_code" -eq 64
+grep -q '"stage": "arguments"' <<< "$probe_output"
 
 echo "Testing one-shot request claim, configuration, and exact transformed vector..."
 GAME="$WORK/library/steamapps/common/Game With Spaces Ω"
@@ -86,5 +108,34 @@ OUTPUT_FILE="$WORK/exit.txt" FAKE_EXIT=37 SteamAppId=268500 XDG_RUNTIME_DIR="$WO
 exit_code=$?
 set -e
 test "$exit_code" -eq 37
+
+echo "Testing cancellation and child process-tree cleanup..."
+cat > "$WORK/sleeper.sh" <<'SLEEPER'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$$" > "$CHILD_PID_FILE"
+while true; do sleep 1; done
+SLEEPER
+chmod +x "$WORK/sleeper.sh"
+CHILD_PID_FILE="$WORK/child.pid" SteamAppId=268500 XDG_RUNTIME_DIR="$WORK/runtime" \
+  dotnet "$WRAPPER_DIR/AAML.ProtonWrapper.dll" "$WORK/sleeper.sh" 2> "$WORK/cancel.json" &
+wrapper_pid=$!
+for _ in {1..50}; do
+  test -s "$WORK/child.pid" && break
+  sleep 0.1
+done
+test -s "$WORK/child.pid"
+child_pid=$(< "$WORK/child.pid")
+kill -TERM "$wrapper_pid"
+set +e
+wait "$wrapper_pid"
+cancel_code=$?
+set -e
+test "$cancel_code" -eq 143
+grep -q 'steam.launch.cancelled' "$WORK/cancel.json"
+if kill -0 "$child_pid" 2>/dev/null; then
+  echo "Cancelled wrapper left child process $child_pid running." >&2
+  exit 1
+fi
 
 echo "AAML Proton wrapper integration tests passed."

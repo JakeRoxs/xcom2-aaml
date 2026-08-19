@@ -8,7 +8,7 @@ using AAML.Application.Profiles;
 namespace AAML.Avalonia;
 
 [Section("profiles", "fa-layer-group", 4, FriendlyName = "Profiles")]
-public sealed class ProfilesViewModel : ReactiveObject
+public sealed class ProfilesViewModel : ReactiveObject, IDisposable
 {
     private readonly ApplicationSession session;
     private readonly IProfileDocumentTransfer transfer;
@@ -25,7 +25,7 @@ public sealed class ProfilesViewModel : ReactiveObject
         this.transfer = transfer;
         this.profileRepository = profileRepository;
         this.legacyExport = legacyExport;
-        session.PropertyChanged += (_, _) => this.RaisePropertyChanged(nameof(Status));
+        session.PropertyChanged += OnSessionPropertyChanged;
         Refresh = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.RefreshProfilesAsync(CancellationToken.None))).Enhance(text: "Refresh profiles", name: "RefreshProfiles");
         Create = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.CreateProfileAsync(ProfileName, CancellationToken.None))).Enhance(text: "Create profile", name: "CreateProfile");
         Apply = ReactiveCommand.CreateFromTask(async () => SelectedProfile is null ? Result.Failure("Select a profile.") : ToCommand(await session.ApplyProfileAsync(SelectedProfile.Id, CancellationToken.None))).Enhance(text: "Apply profile", name: "ApplyProfile");
@@ -67,6 +67,7 @@ public sealed class ProfilesViewModel : ReactiveObject
     public IEnhancedCommand<Result> ConfirmLegacyAdopt { get; }
     public IEnhancedCommand<Result> ConfirmLegacyIgnore { get; }
     public string LegacyReport { get => legacyReport; private set => this.RaiseAndSetIfChanged(ref legacyReport, value); }
+    public bool CanConfirmLegacy => legacyPreview is not null;
     public IEnhancedCommand<Result> LoadMissing { get; }
     public IEnhancedCommand<Result> SubscribeMissing { get; }
     public ObservableCollection<SessionMissingProfileItem> MissingItems { get; } = [];
@@ -82,19 +83,20 @@ public sealed class ProfilesViewModel : ReactiveObject
 
     private async Task<Result> ImportLegacyAsync()
     {
+        SetLegacyPreview(null);
         var opened = await transfer.OpenLegacyAsync(CancellationToken.None);
         if (!opened.IsSuccess) return Result.Failure(opened.Error!.Message);
         if (opened.Value is null) return Result.Success();
         var preview = session.PreviewLegacyProfile(opened.Value);
         if (!preview.IsSuccess) return Result.Failure(preview.Error!.Message);
-        legacyPreview = preview.Value; LegacyReport = legacyPreview!.Report; return Result.Success();
+        SetLegacyPreview(preview.Value); LegacyReport = legacyPreview!.Report; return Result.Success();
     }
 
     private async Task<Result> ConfirmLegacyAsync(LegacyTaxonomyDisposition disposition)
     {
         if (legacyPreview is null) return Result.Failure("Preview a legacy profile before importing.");
         var result = await session.ImportLegacyProfileAsync(ProfileName, legacyPreview, disposition, CancellationToken.None);
-        if (result.IsSuccess) legacyPreview = null; return ToCommand(result);
+        if (result.IsSuccess) SetLegacyPreview(null); return ToCommand(result);
     }
 
     private async Task<Result> LoadMissingAsync()
@@ -124,4 +126,18 @@ public sealed class ProfilesViewModel : ReactiveObject
     }
 
     private static Result ToCommand(AAML.Application.Common.Result result) => result.IsSuccess ? Result.Success() : Result.Failure(result.Error!.Message);
+
+    private void SetLegacyPreview(LegacyProfilePreview? value)
+    {
+        legacyPreview = value;
+        this.RaisePropertyChanged(nameof(CanConfirmLegacy));
+    }
+
+    private void OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        this.RaisePropertyChanged(nameof(Status));
+        if (args.PropertyName is nameof(ApplicationSession.Settings) or nameof(ApplicationSession.DiscoveredMods)) SetLegacyPreview(null);
+    }
+
+    public void Dispose() => session.PropertyChanged -= OnSessionPropertyChanged;
 }

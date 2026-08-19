@@ -13,6 +13,7 @@ using AAML.Application.Ports;
 using AAML.Application.Profiles;
 using AAML.Application.Settings;
 using AAML.Application.Startup;
+using AAML.Application.Updates;
 using AAML.Domain.Games;
 using AAML.Domain.Launching;
 using AAML.Domain.Mods;
@@ -97,7 +98,7 @@ public sealed class ApplicationSessionActivationTests
     {
         var fixture = new SessionFixture(previewFlow: true);
         await fixture.Session.InitializeAsync(TestContext.CancellationToken);
-        using var viewModel = new ModsViewModel(fixture.Session, Mock.Of<IExternalLauncher>());
+        using var viewModel = new ModsViewModel(fixture.Session, Mock.Of<IExternalLauncher>(), Mock.Of<IApplicationUiController>());
         var row = fixture.Session.ModRows.Single(item => item.Key == fixture.First.Key);
 
         viewModel.SetSelection([row]);
@@ -105,6 +106,47 @@ public sealed class ApplicationSessionActivationTests
         viewModel.SelectedPreviewImagePath.Should().Be("C:\\Cache\\workshop.png");
         viewModel.SetSelection([]);
         viewModel.SelectedPreviewImagePath.Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public async Task SelectedModCopyActions_UseCurrentVisualOrderAndReportUnavailableValues()
+    {
+        var fixture = new SessionFixture(previewFlow: true);
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        var copied = new List<string>();
+        var ui = new Mock<IApplicationUiController>();
+        ui.Setup(service => service.CopyTextAsync(It.IsAny<string>())).Callback<string>(copied.Add).ReturnsAsync(true);
+        using var viewModel = new ModsViewModel(fixture.Session, Mock.Of<IExternalLauncher>(), ui.Object);
+        var rows = fixture.Session.ModRows.Where(row => row.Key.HasValue).ToArray();
+        viewModel.SetSelection([rows[1], rows[0], rows[1]]);
+
+        (await viewModel.CopySelectedNames.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+        copied[^1].Split(Environment.NewLine).Should().Equal(rows.Select(row => row.Name));
+
+        (await viewModel.CopySelectedPaths.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+        copied[^1].Split(Environment.NewLine).Should().Equal(rows.Select(row => row.Location));
+
+        (await viewModel.CopySelectedWorkshopUrls.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+        copied[^1].Should().Contain("https://steamcommunity.com/sharedfiles/filedetails/?id=42")
+            .And.Contain("Workshop URL unavailable").And.Contain("has no Workshop ID");
+
+        (await viewModel.CopySelectedReport.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+        copied[^1].Should().Contain("AAML selected mods (2)").And.Contain("Package ID: First").And.Contain("Package ID: Second")
+            .And.Contain("Source: SteamWorkshop").And.Contain("Source: Manual").And.Contain("Active: No").And.Contain("Explicit order: Not set");
+        viewModel.CopyStatus.Should().Contain("Copied 2 selected mods").And.Contain("deterministic load order").And.Contain("Review local paths");
+
+        var retained = SessionModRow.Retained(new RetainedWorkshopItem(new WorkshopId(99), new PackageId("Missing.Package"), "Missing mod", new ModKey(ModSource.SteamWorkshop, "C:\\Gone\\Missing")));
+        SelectedModCopyFormatter.Format([retained], SelectedModCopyFormat.Paths).Should().Be("[Not currently installed: Missing mod; last known path: C:\\Gone\\Missing]");
+        viewModel.SetSelection([rows[0]]);
+        viewModel.CopyStatus.Should().BeEmpty();
+
+        ui.Setup(service => service.CopyTextAsync(It.IsAny<string>())).ReturnsAsync(false);
+        (await viewModel.CopySelectedNames.Execute().FirstAsync()).IsFailure.Should().BeTrue();
+        viewModel.CopyStatus.Should().Be("Clipboard is unavailable. Nothing was copied.");
+
+        ui.Setup(service => service.CopyTextAsync(It.IsAny<string>())).ThrowsAsync(new InvalidOperationException("clipboard failed"));
+        (await viewModel.CopySelectedNames.Execute().FirstAsync()).IsFailure.Should().BeTrue();
+        viewModel.CopyStatus.Should().Be("Clipboard is unavailable. Nothing was copied.");
     }
 
     [TestMethod]
@@ -200,11 +242,54 @@ public sealed class ApplicationSessionActivationTests
     }
 
     [TestMethod]
+    public async Task DashboardAccessibilitySizing_PreviewsIndependentlyResetsAndDiscardsToPersistedValues()
+    {
+        var fixture = new SessionFixture(textScale: 1.10m, iconScale: 1.20m);
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        var ui = new Mock<IApplicationUiController>();
+        using var viewModel = new DashboardViewModel(fixture.Session, ui.Object, PresetService());
+
+        viewModel.TextScale = 1.25m;
+        viewModel.IconScale = 0.90m;
+        ui.Verify(service => service.ApplyAccessibilitySizing(1.25m, 1.20m), Times.Once);
+        ui.Verify(service => service.ApplyAccessibilitySizing(1.25m, 0.90m), Times.Once);
+
+        (await viewModel.ResetAccessibilitySizing.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+        viewModel.TextScale.Should().Be(ApplicationSettingsDefaults.DefaultTextScale);
+        viewModel.IconScale.Should().Be(ApplicationSettingsDefaults.DefaultIconScale);
+        ui.Verify(service => service.ApplyAccessibilitySizing(ApplicationSettingsDefaults.DefaultTextScale, ApplicationSettingsDefaults.DefaultIconScale), Times.Once);
+
+        (await viewModel.DiscardPreferences.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+        viewModel.TextScale.Should().Be(1.10m);
+        viewModel.IconScale.Should().Be(1.20m);
+        ui.Verify(service => service.ApplyAccessibilitySizing(1.10m, 1.20m), Times.Once);
+        fixture.PreferencesSaveCount.Should().Be(0);
+    }
+
+    [TestMethod]
+    public async Task DashboardDiscard_JoinsCancelledInFlightAccessibilityAutoSave()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fixture = new SessionFixture(autoSave: true, textScale: 1.10m, preferencesSaveRelease: release);
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        using var viewModel = new DashboardViewModel(fixture.Session, Mock.Of<IApplicationUiController>(), PresetService());
+        viewModel.Activate();
+        viewModel.TextScale = 1.40m;
+        await fixture.PreferencesSaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(3), TestContext.CancellationToken);
+
+        (await viewModel.DiscardPreferences.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+
+        viewModel.TextScale.Should().Be(1.10m);
+        fixture.PreferencesSaved.Should().BeNull();
+        fixture.Session.Settings!.TextScale.Should().Be(1.10m);
+    }
+
+    [TestMethod]
     public async Task ModGridDirectPreferences_AutoSaveDebouncesWhileManualSaveViewFlushes()
     {
         var fixture = new SessionFixture(autoSave: true);
         await fixture.Session.InitializeAsync(TestContext.CancellationToken);
-        using var viewModel = new ModsViewModel(fixture.Session, Mock.Of<IExternalLauncher>());
+        using var viewModel = new ModsViewModel(fixture.Session, Mock.Of<IExternalLauncher>(), Mock.Of<IApplicationUiController>());
         viewModel.Activate();
 
         viewModel.IncludeHidden = false;
@@ -253,11 +338,155 @@ public sealed class ApplicationSessionActivationTests
         await fixture.Session.InitializeAsync(TestContext.CancellationToken);
         fixture.Session.ModRows.Single(item => item.Key == fixture.First.Key).IsActive = true;
 
-        fixture.Session.DiscardModDrafts();
+        fixture.Session.DiscardModsOwnedDrafts();
         await Task.Delay(550, TestContext.CancellationToken);
 
         fixture.SettingsRepository.SaveCount.Should().Be(0);
         fixture.Session.HasUnsavedModDrafts.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public async Task Discard_CancelsInFlightAutoSaveBeforeItCanResurrectDrafts()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fixture = new SessionFixture(autoSave: true, modSaveRelease: release);
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        fixture.Session.ActivateAutoSaveOwner("mods");
+        fixture.Session.ModRows.Single(item => item.Key == fixture.First.Key).IsActive = true;
+        await fixture.SettingsRepository.SaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(3), TestContext.CancellationToken);
+
+        fixture.Session.DiscardModsOwnedDrafts();
+        await Task.Delay(100, TestContext.CancellationToken);
+
+        fixture.SettingsRepository.Saved.Should().BeNull();
+        fixture.Session.HasUnsavedModDrafts.Should().BeFalse();
+        fixture.Session.ModRows.Single(item => item.Key == fixture.First.Key).IsActive.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public async Task Discard_CancelsEveryOverlappingAutoSaveForTheSameOwner()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fixture = new SessionFixture(autoSave: true, modSaveRelease: release);
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        fixture.Session.ActivateAutoSaveOwner("mods");
+        fixture.Session.ModRows.Single(item => item.Key == fixture.First.Key).IsActive = true;
+        await fixture.SettingsRepository.SaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(3), TestContext.CancellationToken);
+        fixture.Session.ModRows.Single(item => item.Key == fixture.Second.Key).IsActive = true;
+        await Task.Delay(550, TestContext.CancellationToken);
+
+        fixture.Session.DiscardModsOwnedDrafts();
+        release.TrySetResult();
+        await Task.Delay(100, TestContext.CancellationToken);
+
+        fixture.SettingsRepository.Saved?.ModIntents.Should().BeNullOrEmpty("a late overlapping completion must never restore discarded activation drafts");
+        fixture.Session.HasUnsavedModDrafts.Should().BeFalse();
+        fixture.Session.ModRows.Where(item => item.Key.HasValue).Should().OnlyContain(item => item.IsActive == false);
+    }
+
+    [TestMethod]
+    public async Task ModsDiscard_RestoresEveryOwnedDraftAndCancelsViewSave()
+    {
+        var persistedGrid = new ModGridPreferences(true, null, true, new HashSet<ModGridGroupKey>());
+        var fixture = new SessionFixture(autoSave: true, modGrid: persistedGrid);
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        using var viewModel = new ModsViewModel(fixture.Session, Mock.Of<IExternalLauncher>(), Mock.Of<IApplicationUiController>());
+        viewModel.Activate();
+        fixture.Session.ModRows.Single(row => row.IsGroup).IsExpanded.Should().BeTrue();
+
+        fixture.Session.ModRows.Single(row => row.Key == fixture.First.Key).IsActive = true;
+        var groupKey = fixture.Session.ModRows.Single(row => row.IsGroup).GroupKey;
+        (await viewModel.ToggleGroup.Execute(groupKey).FirstAsync()).IsSuccess.Should().BeTrue();
+        fixture.Session.ModRows.Single(row => row.IsGroup).IsExpanded.Should().BeFalse();
+        viewModel.IncludeHidden = false;
+        viewModel.SelectedStateFilter = viewModel.StateFilters.Single(option => option.State == ModGridSemanticState.Conflict);
+        (await viewModel.DiscardChanges.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+        await Task.Delay(550, TestContext.CancellationToken);
+
+        viewModel.IncludeHidden.Should().BeTrue();
+        viewModel.SelectedStateFilter.Should().Be(viewModel.StateFilters.Single(option => option.State is null));
+        viewModel.GroupByCategory.Should().BeTrue();
+        fixture.Session.ModRows.Single(row => row.IsGroup).IsExpanded.Should().BeTrue();
+        fixture.Session.HasUnsavedModDrafts.Should().BeFalse();
+        fixture.ModGridSaveCount.Should().Be(0);
+    }
+
+    [TestMethod]
+    public async Task DashboardDiscard_ReloadsOnlyDashboardAndPreservesModsDraft()
+    {
+        var fixture = new SessionFixture();
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        using var dashboard = new DashboardViewModel(fixture.Session, Mock.Of<IApplicationUiController>(), PresetService());
+        dashboard.LaunchArguments = "-unsaved-dashboard";
+        fixture.Session.ModRows.Single(row => row.Key == fixture.First.Key).IsActive = true;
+
+        (await dashboard.DiscardPreferences.Execute().FirstAsync()).IsSuccess.Should().BeTrue();
+
+        dashboard.LaunchArguments.Should().BeEmpty();
+        fixture.Session.ModRows.Single(row => row.Key == fixture.First.Key).IsActive.Should().BeTrue();
+        fixture.Session.HasUnsavedModDrafts.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public async Task VisibleRefreshCommands_InvokeOnlyTheirOwnedScopesAndUseDraftActivation()
+    {
+        var fixture = new SessionFixture();
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        fixture.Catalog.Invocations.Clear();
+        fixture.ConflictService.Invocations.Clear();
+        fixture.ConfigurationCatalog.Invocations.Clear();
+        fixture.Session.ModRows.Single(row => row.Key == fixture.First.Key).IsActive = true;
+
+        (await fixture.Session.RefreshConflictsAsync(TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
+
+        fixture.Catalog.Verify(service => service.DiscoverAsync(It.IsAny<IReadOnlyList<string>>(), null, It.IsAny<CancellationToken>()), Times.Never);
+        fixture.ConfigurationCatalog.Verify(service => service.ListAsync(It.IsAny<IReadOnlyList<ModInstallation>>(), It.IsAny<GameVariant>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.ConflictService.Verify(service => service.AnalyzeAsync(It.IsAny<IReadOnlyList<ModInstallation>>(),
+            It.Is<IReadOnlySet<ModKey>>(keys => keys.Contains(fixture.First.Key)), It.IsAny<CancellationToken>()), Times.Once);
+
+        fixture.ConflictService.Invocations.Clear();
+        (await fixture.Session.RefreshModsAsync(TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
+        fixture.Catalog.Verify(service => service.DiscoverAsync(It.IsAny<IReadOnlyList<string>>(), null, It.IsAny<CancellationToken>()), Times.Once);
+        fixture.ConflictService.Verify(service => service.AnalyzeAsync(It.IsAny<IReadOnlyList<ModInstallation>>(),
+            It.Is<IReadOnlySet<ModKey>>(keys => keys.Contains(fixture.First.Key)), It.IsAny<CancellationToken>()), Times.Once);
+        fixture.ConfigurationCatalog.Verify(service => service.ListAsync(It.IsAny<IReadOnlyList<ModInstallation>>(), It.IsAny<GameVariant>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [TestMethod]
+    public async Task StartupAndManualUpdateChecksShareOneSessionOwnedSupportResult()
+    {
+        var fixture = new SessionFixture();
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        using var support = new SupportViewModel(fixture.Session, Mock.Of<IExternalLauncher>(), Mock.Of<IApplicationPaths>(),
+            Mock.Of<IApplicationDiagnostics>(), Mock.Of<IApplicationVersionProvider>(), Mock.Of<IApplicationUiController>(), Mock.Of<IGameLogLocator>(), Mock.Of<IGameUserDataLocator>());
+
+        (await fixture.Session.CheckForUpdatesAsync(false, TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
+        support.UpdateDetails.Should().Contain("Startup Stable update check").And.Contain("up to date");
+
+        (await fixture.Session.CheckForUpdatesAsync(true, TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
+        support.UpdateDetails.Should().Contain("Manual Stable update check").And.Contain("up to date");
+    }
+
+    [TestMethod]
+    public async Task NewerUpdateCheckWinsWhenOlderRequestCompletesLast()
+    {
+        var fixture = new SessionFixture();
+        await fixture.Session.InitializeAsync(TestContext.CancellationToken);
+        var older = new TaskCompletionSource<Result<UpdateCheckResult>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newer = new TaskCompletionSource<Result<UpdateCheckResult>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var call = 0;
+        fixture.UpdateChecks.Setup(service => service.CheckAsync(It.IsAny<UpdateChannelPreference>(), It.IsAny<CancellationToken>()))
+            .Returns(() => Interlocked.Increment(ref call) == 1 ? older.Task : newer.Task);
+
+        var startup = fixture.Session.CheckForUpdatesAsync(false, TestContext.CancellationToken);
+        var manual = fixture.Session.CheckForUpdatesAsync(true, TestContext.CancellationToken);
+        newer.SetResult(Result<UpdateCheckResult>.Success(new(UpdateCheckStatus.UpToDate, "1.0.0", null, "newer result")));
+        (await manual).IsSuccess.Should().BeTrue();
+        older.SetResult(Result<UpdateCheckResult>.Success(new(UpdateCheckStatus.NoEligibleRelease, "1.0.0", null, "older result")));
+        (await startup).IsSuccess.Should().BeTrue();
+
+        fixture.Session.UpdateCheck!.Manual.Should().BeTrue();
+        fixture.Session.UpdateCheck.Result!.Message.Should().Be("newer result");
     }
 
     [TestMethod]
@@ -610,14 +839,14 @@ public sealed class ApplicationSessionActivationTests
 
     private sealed class SessionFixture
     {
-        public SessionFixture(bool duplicatePackages = false, bool previewFlow = false, WorkshopStartupRefreshPolicy workshopPolicy = WorkshopStartupRefreshPolicy.AllMods, bool navigationRailSaveFails = false, NavigationRailMode navigationRailMode = NavigationRailMode.Expanded, bool delayDiscovery = false, bool autoSave = false, bool modSaveFails = false, TaskCompletionSource? modSaveRelease = null, TimeSpan? modSaveDelay = null, IUiDispatcher? uiDispatcher = null)
+        public SessionFixture(bool duplicatePackages = false, bool previewFlow = false, WorkshopStartupRefreshPolicy workshopPolicy = WorkshopStartupRefreshPolicy.AllMods, bool navigationRailSaveFails = false, NavigationRailMode navigationRailMode = NavigationRailMode.Expanded, bool delayDiscovery = false, bool autoSave = false, bool modSaveFails = false, TaskCompletionSource? modSaveRelease = null, TimeSpan? modSaveDelay = null, IUiDispatcher? uiDispatcher = null, ModGridPreferences? modGrid = null, decimal textScale = ApplicationSettingsDefaults.DefaultTextScale, decimal iconScale = ApplicationSettingsDefaults.DefaultIconScale, TaskCompletionSource? preferencesSaveRelease = null)
         {
             First = previewFlow
                 ? new ModInstallation(new(ModSource.SteamWorkshop, "C:\\Mods\\first"), new("First"), "First", new WorkshopId(42), false, DescriptorState.Enabled, null,
                     new ModInstallationMetadata("C:\\Mods\\first\\first.XComMod", null, null, [], "C:\\Mods\\first\\local.png", null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch))
                 : Installation("first", "First");
             Second = Installation("second", duplicatePackages ? "First" : "Second");
-            InitialSettings = CreateSettings(navigationRailMode, workshopPolicy) with { AutoSaveChanges = autoSave };
+            InitialSettings = CreateSettings(navigationRailMode, workshopPolicy) with { AutoSaveChanges = autoSave, ModGrid = modGrid ?? ModGridPreferences.Default, TextScale = textScale, IconScale = iconScale };
             Bootstrapper = new Mock<ISettingsBootstrapper>();
             Bootstrapper.Setup(service => service.InitializeAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Result<SettingsBootstrapResult>.Success(new(InitialSettings, SettingsOrigin.Existing)));
             Bootstrapper.Setup(service => service.SetNavigationRailModeAsync(It.IsAny<ApplicationSettings>(), It.IsAny<NavigationRailMode>(), It.IsAny<CancellationToken>()))
@@ -633,11 +862,13 @@ public sealed class ApplicationSessionActivationTests
                     AutoSavePreferenceSaved = enabled;
                     return Result<ApplicationSettings>.Success(current with { AutoSaveChanges = enabled });
                 });
-            Bootstrapper.Setup(service => service.SavePreferencesAsync(It.IsAny<ApplicationSettings>(), It.IsAny<IReadOnlyList<LaunchArgument>>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<WorkshopStartupRefreshPolicy>(), It.IsAny<ThemePreference>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<UpdateChannelPreference>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((ApplicationSettings current, IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> roots, bool allowMissing, bool closeAfter, WorkshopStartupRefreshPolicy workshop, ThemePreference theme, bool multiple, bool checkUpdates, UpdateChannelPreference channel, CancellationToken _) =>
+            Bootstrapper.Setup(service => service.SavePreferencesAsync(It.IsAny<ApplicationSettings>(), It.IsAny<IReadOnlyList<LaunchArgument>>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<WorkshopStartupRefreshPolicy>(), It.IsAny<ThemePreference>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<UpdateChannelPreference>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+                .Returns(async (ApplicationSettings current, IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> roots, bool allowMissing, bool closeAfter, WorkshopStartupRefreshPolicy workshop, ThemePreference theme, bool multiple, bool checkUpdates, UpdateChannelPreference channel, decimal textScale, decimal iconScale, CancellationToken cancellationToken) =>
                 {
+                    PreferencesSaveStarted.TrySetResult();
+                    if (preferencesSaveRelease is not null) await preferencesSaveRelease.Task.WaitAsync(cancellationToken);
                     PreferencesSaveCount++;
-                    PreferencesSaved = current with { LaunchArguments = arguments, ModRootLocations = roots, AllowLaunchWithMissingDependencies = allowMissing, CloseAfterLaunch = closeAfter, WorkshopStartupRefresh = workshop, Theme = theme, AllowMultipleInstances = multiple, CheckForUpdates = checkUpdates, UpdateChannel = channel };
+                    PreferencesSaved = current with { LaunchArguments = arguments, ModRootLocations = roots, AllowLaunchWithMissingDependencies = allowMissing, CloseAfterLaunch = closeAfter, WorkshopStartupRefresh = workshop, Theme = theme, AllowMultipleInstances = multiple, CheckForUpdates = checkUpdates, UpdateChannel = channel, TextScale = textScale, IconScale = iconScale };
                     PreferencesSaveCompleted.TrySetResult();
                     return Result<ApplicationSettings>.Success(PreferencesSaved);
                 });
@@ -648,8 +879,8 @@ public sealed class ApplicationSessionActivationTests
                     ModGridSaved = grid;
                     return Result<ApplicationSettings>.Success(current with { ModGrid = grid });
                 });
-            var catalog = new Mock<IModCatalogSource>();
-            catalog.Setup(service => service.DiscoverAsync(It.IsAny<IReadOnlyList<string>>(), null, It.IsAny<CancellationToken>())).Returns(async () =>
+            Catalog = new Mock<IModCatalogSource>();
+            Catalog.Setup(service => service.DiscoverAsync(It.IsAny<IReadOnlyList<string>>(), null, It.IsAny<CancellationToken>())).Returns(async () =>
             {
                 DiscoveryStarted.TrySetResult();
                 if (delayDiscovery) await discoveryRelease.Task;
@@ -669,11 +900,14 @@ public sealed class ApplicationSessionActivationTests
             var dependencies = new Mock<IModDependencyService>();
             dependencies.Setup(service => service.EvaluateAsync(It.IsAny<IReadOnlyCollection<WorkshopId>>(), It.IsAny<IReadOnlyCollection<WorkshopId>>(), It.IsAny<IReadOnlyCollection<WorkshopId>>(), It.IsAny<IReadOnlyDictionary<WorkshopId, IReadOnlySet<WorkshopId>>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Result<ModDependencyReport>.Success(new([], new Dictionary<WorkshopId, IReadOnlyList<WorkshopId>>())));
-            var conflicts = new Mock<IModConflictService>();
-            conflicts.Setup(service => service.AnalyzeAsync(It.IsAny<IReadOnlyList<ModInstallation>>(), It.IsAny<IReadOnlySet<ModKey>>(), It.IsAny<CancellationToken>())).ReturnsAsync(EmptyConflicts());
-            conflicts.Setup(service => service.SetActiveAsync(It.IsAny<IReadOnlySet<ModKey>>(), It.IsAny<CancellationToken>())).ReturnsAsync(EmptyConflicts());
-            var documents = new Mock<IConfigurationDocumentCatalog>();
-            documents.Setup(service => service.ListAsync(It.IsAny<IReadOnlyList<ModInstallation>>(), It.IsAny<GameVariant>(), It.IsAny<CancellationToken>())).ReturnsAsync(Result<IReadOnlyList<ConfigurationDocumentSummary>>.Success([]));
+            ConflictService = new Mock<IModConflictService>();
+            ConflictService.Setup(service => service.AnalyzeAsync(It.IsAny<IReadOnlyList<ModInstallation>>(), It.IsAny<IReadOnlySet<ModKey>>(), It.IsAny<CancellationToken>())).ReturnsAsync(EmptyConflicts());
+            ConflictService.Setup(service => service.SetActiveAsync(It.IsAny<IReadOnlySet<ModKey>>(), It.IsAny<CancellationToken>())).ReturnsAsync(EmptyConflicts());
+            ConfigurationCatalog = new Mock<IConfigurationDocumentCatalog>();
+            ConfigurationCatalog.Setup(service => service.ListAsync(It.IsAny<IReadOnlyList<ModInstallation>>(), It.IsAny<GameVariant>(), It.IsAny<CancellationToken>())).ReturnsAsync(Result<IReadOnlyList<ConfigurationDocumentSummary>>.Success([]));
+            UpdateChecks = new Mock<IUpdateCheckService>();
+            UpdateChecks.Setup(service => service.CheckAsync(It.IsAny<UpdateChannelPreference>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Result<UpdateCheckResult>.Success(new(UpdateCheckStatus.UpToDate, "1.0.0", null, "AAML is up to date.")));
             var launcher = new Mock<IGameLaunchCoordinator>();
             launcher.Setup(service => service.LaunchAsync(It.IsAny<GameLaunchRequest>(), It.IsAny<CancellationToken>())).Callback<GameLaunchRequest, CancellationToken>((request, _) => LaunchRequest = request)
                 .ReturnsAsync(Result<GameLaunchOutcome>.Success(new(null, new(DateTimeOffset.UtcNow, 42, "game"))));
@@ -693,14 +927,15 @@ public sealed class ApplicationSessionActivationTests
 
             var services = new Dictionary<Type, object>
             {
-                [typeof(ISettingsBootstrapper)] = Bootstrapper.Object, [typeof(IModCatalogSource)] = catalog.Object,
+                [typeof(ISettingsBootstrapper)] = Bootstrapper.Object, [typeof(IModCatalogSource)] = Catalog.Object,
                 [typeof(IGameLaunchCoordinator)] = launcher.Object, [typeof(IModIntentService)] = new ModIntentService(SettingsRepository),
                 [typeof(IProfileService)] = profiles.Object, [typeof(IModDependencyService)] = dependencies.Object,
-                [typeof(IModConflictService)] = conflicts.Object, [typeof(IConfigurationDocumentCatalog)] = documents.Object,
+                [typeof(IModConflictService)] = ConflictService.Object, [typeof(IConfigurationDocumentCatalog)] = ConfigurationCatalog.Object,
                 [typeof(IModDuplicateAnalyzer)] = new ModDuplicateAnalyzer(), [typeof(IApplicationDiagnostics)] = diagnostics.Object,
                 [typeof(IWorkshopService)] = workshop.Object, [typeof(IWorkshopPreviewCache)] = previewCache.Object,
                 [typeof(IWorkshopOperationCoordinator)] = workshopOperations.Object,
                 [typeof(IExistingModRootPreviewGuard)] = RootGuard,
+                [typeof(IUpdateCheckService)] = UpdateChecks.Object,
                 [typeof(IUiDispatcher)] = uiDispatcher ?? new InlineUiDispatcher()
             };
             var constructor = typeof(ApplicationSession).GetConstructors().Single();
@@ -715,6 +950,10 @@ public sealed class ApplicationSessionActivationTests
         public ModInstallation Second { get; }
         public RecordingSettingsRepository SettingsRepository { get; }
         public Mock<IWorkshopOperationCoordinator> WorkshopOperations { get; }
+        public Mock<IModCatalogSource> Catalog { get; }
+        public Mock<IModConflictService> ConflictService { get; }
+        public Mock<IConfigurationDocumentCatalog> ConfigurationCatalog { get; }
+        public Mock<IUpdateCheckService> UpdateChecks { get; }
         public ExistingModRootPreviewGuard RootGuard { get; }
         public ModProfile? CreatedProfile { get; private set; }
         public GameLaunchRequest? LaunchRequest { get; private set; }
@@ -723,6 +962,7 @@ public sealed class ApplicationSessionActivationTests
         public int PreferencesSaveCount { get; private set; }
         public ApplicationSettings? PreferencesSaved { get; private set; }
         public TaskCompletionSource PreferencesSaveCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource PreferencesSaveStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int ModGridSaveCount { get; private set; }
         public ModGridPreferences? ModGridSaved { get; private set; }
 

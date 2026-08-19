@@ -86,6 +86,25 @@ function Set-ElementValue($Element, [string]$Value) {
     ([System.Windows.Automation.ValuePattern]$pattern).SetValue($Value)
 }
 
+function Set-NumericElementValue($Element, [double]$Value) {
+    $pattern = $null
+    if (-not $Element.TryGetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern, [ref]$pattern)) {
+        throw "Element '$($Element.Current.AutomationId)' does not expose RangeValuePattern."
+    }
+    ([System.Windows.Automation.RangeValuePattern]$pattern).SetValue($Value)
+}
+
+function Focus-NumericElement($Element) {
+    $edit = $Element.FindFirst(
+        [System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [System.Windows.Automation.ControlType]::Edit))
+    $target = if ($null -ne $edit) { $edit } else { $Element }
+    $target.SetFocus()
+    return $target.Current.HasKeyboardFocus
+}
+
 function Invoke-Element($Element) {
     $scroll = $null
     if ($Element.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scroll)) {
@@ -94,6 +113,11 @@ function Invoke-Element($Element) {
     $selection = $null
     if ($Element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selection)) {
         ([System.Windows.Automation.SelectionItemPattern]$selection).Select()
+        return
+    }
+    $toggle = $null
+    if ($Element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$toggle)) {
+        ([System.Windows.Automation.TogglePattern]$toggle).Toggle()
         return
     }
     $invoke = $null
@@ -190,12 +214,13 @@ New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $temp -Force | Out-Null
 
 $settings = [ordered]@{
-    schemaVersion = 9; selectedGame = 'XCom2'; gameInstallationLocation = $null; modRootLocations = @()
+    schemaVersion = 10; selectedGame = 'XCom2'; gameInstallationLocation = $null; modRootLocations = @()
     launchArguments = @('-review'); modIntents = @(); categories = @(); tags = @()
     allowLaunchWithMissingDependencies = $false; gameLocations = @([ordered]@{ game = 'XCom2'; installationLocation = $null; modRootLocations = @() }); closeAfterLaunch = $false
     workshopStartupRefresh = 'AllMods'; theme = 'System'; allowMultipleInstances = $true
     duplicatePreferences = @(); modGrid = [ordered]@{ includeHidden = $false; stateFilter = $null; groupByCategory = $false; collapsedGroups = @() }
     retainedWorkshopItems = @(); checkForUpdates = $false; updateChannel = 'Stable'; navigationRailMode = 'Expanded'; autoSaveChanges = $false
+    textScale = 1.0; iconScale = 1.0
 }
 $settingsPath = Join-Path $settingsDirectory 'settings.json'
 $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding utf8
@@ -260,11 +285,31 @@ try {
         [ordered]@{ windowTitle = $window.Current.Name; processId = $process.Id; migrationStatus = $receipt.status }
     }
 
+    Invoke-SmokeStep 'navigation-accessibility-focus' {
+        $collapse = Wait-ByAutomationId $window 'ShellRailCollapseButton'
+        $collapse.SetFocus()
+        if (-not $collapse.Current.HasKeyboardFocus) { throw 'Expanded rail collapse control did not accept keyboard focus.' }
+        Invoke-Element $collapse
+        Start-Sleep -Milliseconds 250
+        $expand = Wait-ByAutomationId $window 'ShellRailExpandButton'
+        $expand.SetFocus()
+        if (-not $expand.Current.HasKeyboardFocus) { throw 'Compact rail expand control did not accept keyboard focus.' }
+        Invoke-Element $expand
+        [ordered]@{ expandedControlFocused = $true; compactControlFocused = $true; restoredExpanded = $true }
+    }
+
     Invoke-SmokeStep 'dashboard-save-preferences' {
         $page = Wait-ByAutomationId $window 'DashboardPage'
         $status = Wait-ByAutomationId $page 'DashboardStatus'
         $arguments = Wait-ByAutomationId $page 'DashboardLaunchArgumentsTextBox'
         $null = Wait-ByAutomationId $page 'DashboardAutoSaveToggle'
+        $textScale = Wait-ByAutomationId $page 'DashboardTextScale'
+        $iconScale = Wait-ByAutomationId $page 'DashboardIconScale'
+        $null = Wait-ByAutomationId $page 'DashboardResetAccessibilitySizing'
+        if (-not (Focus-NumericElement $textScale)) { throw 'Text scale control did not accept keyboard focus.' }
+        if (-not (Focus-NumericElement $iconScale)) { throw 'Icon scale control did not accept keyboard focus.' }
+        Set-NumericElementValue $textScale 1.5
+        Set-NumericElementValue $iconScale 1.5
         $savePreferences = Wait-ByAutomationId $page 'DashboardSavePreferencesButton'
         $arguments.SetFocus()
         Set-ElementValue $arguments "-review`r`n-noRedScreens"
@@ -274,12 +319,28 @@ try {
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds($StepTimeoutSeconds)
         do {
             $saved = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
-            if (@($saved.launchArguments) -contains '-noRedScreens') { break }
+            if (@($saved.launchArguments) -contains '-noRedScreens' -and $saved.textScale -eq 1.5 -and $saved.iconScale -eq 1.5) { break }
             Start-Sleep -Milliseconds 100
         } while ([DateTimeOffset]::UtcNow -lt $deadline)
         if (@($saved.launchArguments) -notcontains '-noRedScreens') { throw 'Saved preferences did not persist to the isolated settings root.' }
+        if ($saved.textScale -ne 1.5 -or $saved.iconScale -ne 1.5) { throw 'Accessibility scale drafts did not persist.' }
         if ($saved.checkForUpdates) { throw 'The isolated no-network update preference changed unexpectedly.' }
-        [ordered]@{ page = $page.Current.AutomationId; status = Get-ElementText $status; persistedLaunchArgument = '-noRedScreens'; updateChecksEnabled = $saved.checkForUpdates }
+        [ordered]@{ page = $page.Current.AutomationId; status = Get-ElementText $status; persistedLaunchArgument = '-noRedScreens'; updateChecksEnabled = $saved.checkForUpdates; textScale = $saved.textScale; iconScale = $saved.iconScale; sizingControlsFocused = $true }
+    }
+
+
+    Invoke-SmokeStep 'dashboard-reset-accessibility-sizing' {
+        $page = Wait-ByAutomationId $window 'DashboardPage'
+        Invoke-Element (Wait-ByAutomationId $page 'DashboardResetAccessibilitySizing')
+        Invoke-Element (Wait-ByAutomationId $page 'DashboardSavePreferencesButton')
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds($StepTimeoutSeconds)
+        do {
+            $saved = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+            if ($saved.textScale -eq 1.0 -and $saved.iconScale -eq 1.0) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTimeOffset]::UtcNow -lt $deadline)
+        if ($saved.textScale -ne 1.0 -or $saved.iconScale -ne 1.0) { throw 'Accessibility sizing reset did not persist defaults.' }
+        [ordered]@{ textScale = $saved.textScale; iconScale = $saved.iconScale; resetPersisted = $true }
     }
 
     $sections = @(
@@ -309,10 +370,10 @@ try {
         Assert-TreeEqual $before (Get-DurableHashes $newRoot) 'Profile selection validation'
         Invoke-Element (Wait-ByAutomationId $window 'ShellSectionProfiles')
         $page = Wait-ByAutomationId $window 'ProfilesPage'
-        Invoke-Element (Wait-ByAutomationId $page 'ProfilesConfirmLegacyButton')
-        Start-Sleep -Milliseconds 300
+        $legacyConfirm = Wait-ByAutomationId $page 'ProfilesConfirmLegacyButton'
+        if ($legacyConfirm.Current.IsEnabled) { throw 'Legacy profile confirmation is enabled without a current preview.' }
         Assert-TreeEqual $before (Get-DurableHashes $newRoot) 'Legacy profile preview validation'
-        [ordered]@{ page = 'ProfilesPage'; initialStatus = $initialStatus; invoked = @('ProfilesApplyButton', 'ProfilesConfirmLegacyButton'); validatedNoMutation = @('selection-required', 'legacy-preview-required') }
+        [ordered]@{ page = 'ProfilesPage'; initialStatus = $initialStatus; invoked = @('ProfilesApplyButton'); disabled = @('ProfilesConfirmLegacyButton'); validatedNoMutation = @('selection-required', 'legacy-preview-required') }
     }
 
     Invoke-SmokeStep 'section-migration-failure' {
@@ -321,10 +382,17 @@ try {
         $report = Wait-ByAutomationId $page 'MigrationReport'
         $initialReport = Get-ElementText $report
         $before = Get-DurableHashes $newRoot
-        Invoke-Element (Wait-ByAutomationId $page 'MigrationConfirmActiveModsButton')
-        Start-Sleep -Milliseconds 300
+        $migrationConfirm = Wait-ByAutomationId $page 'MigrationConfirmActiveModsButton'
+        if ($migrationConfirm.Current.IsEnabled) { throw 'Migration confirmation is enabled without a current preview.' }
+        Invoke-Element (Wait-ByAutomationId $page 'MigrationPreviewActiveModsButton')
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        do {
+            Start-Sleep -Milliseconds 100
+            $migrationConfirm = Wait-ByAutomationId $page 'MigrationConfirmActiveModsButton'
+        } while (-not $migrationConfirm.Current.IsEnabled -and [DateTimeOffset]::UtcNow -lt $deadline)
+        if (-not $migrationConfirm.Current.IsEnabled) { throw 'Migration confirmation did not become enabled after a successful current preview.' }
         Assert-TreeEqual $before (Get-DurableHashes $newRoot) 'Migration preview validation'
-        [ordered]@{ page = 'MigrationPage'; report = $initialReport; invoked = 'MigrationConfirmActiveModsButton'; validatedNoMutation = 'preview-required' }
+        [ordered]@{ page = 'MigrationPage'; report = $initialReport; initiallyDisabled = 'MigrationConfirmActiveModsButton'; invoked = 'MigrationPreviewActiveModsButton'; enabledAfterPreview = 'MigrationConfirmActiveModsButton'; validatedNoMutation = 'preview-required' }
     }
 
     Invoke-SmokeStep 'section-support-copy-report' {
@@ -348,10 +416,17 @@ try {
         $report = Wait-ByAutomationId $page 'CleanupReport'
         $initialReport = Get-ElementText $report
         $before = Get-DurableHashes $newRoot
-        Invoke-Element (Wait-ByAutomationId $page 'CleanupConfirmButton')
-        Start-Sleep -Milliseconds 300
+        $cleanupConfirm = Wait-ByAutomationId $page 'CleanupConfirmButton'
+        if ($cleanupConfirm.Current.IsEnabled) { throw 'Cleanup confirmation is enabled without a current preview.' }
+        Invoke-Element (Wait-ByAutomationId $page 'CleanupPreviewButton')
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        do {
+            Start-Sleep -Milliseconds 100
+            $cleanupConfirm = Wait-ByAutomationId $page 'CleanupConfirmButton'
+        } while (-not $cleanupConfirm.Current.IsEnabled -and [DateTimeOffset]::UtcNow -lt $deadline)
+        if (-not $cleanupConfirm.Current.IsEnabled) { throw 'Cleanup confirmation did not become enabled after a successful current preview.' }
         Assert-TreeEqual $before (Get-DurableHashes $newRoot) 'Cleanup preview validation'
-        [ordered]@{ page = 'CleanupPage'; report = $initialReport; invoked = 'CleanupConfirmButton'; validatedNoMutation = 'preview-required' }
+        [ordered]@{ page = 'CleanupPage'; report = $initialReport; initiallyDisabled = 'CleanupConfirmButton'; invoked = 'CleanupPreviewButton'; enabledAfterPreview = 'CleanupConfirmButton'; validatedNoMutation = 'preview-required' }
     }
 
     Invoke-SmokeStep 'section-dashboard-return' {

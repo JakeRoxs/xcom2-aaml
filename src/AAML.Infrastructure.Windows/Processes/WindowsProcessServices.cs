@@ -71,8 +71,8 @@ public sealed class WindowsExternalLauncher : IExternalLauncher
             return Task.FromResult(Result.Failure(new Error("shell.cancelled", "External launch was cancelled.", ErrorKind.Cancelled)));
         try
         {
-            var processId = starter.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true });
-            return Task.FromResult(processId is null ? Result.Failure(new Error("shell.open_failed", "The target did not open.", ErrorKind.ExternalService)) : Result.Success());
+            starter.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true });
+            return Task.FromResult(Result.Success());
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or IOException)
         {

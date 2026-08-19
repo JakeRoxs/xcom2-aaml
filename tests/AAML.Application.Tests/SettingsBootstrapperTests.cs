@@ -129,7 +129,7 @@ public sealed class SettingsBootstrapperTests
             Directory.CreateDirectory(root);
             var repository = MissingRepository();
             var service = new SettingsBootstrapper(repository, new FakeImporter());
-            var result = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [new LaunchArgument("-log"), new LaunchArgument("-Name=Two Words")], [root], true, true, WorkshopStartupRefreshPolicy.ActiveMods, ThemePreference.Dark, true, false, UpdateChannelPreference.Prerelease, TestContext.CancellationToken);
+            var result = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [new LaunchArgument("-log"), new LaunchArgument("-Name=Two Words")], [root], true, true, WorkshopStartupRefreshPolicy.ActiveMods, ThemePreference.Dark, true, false, UpdateChannelPreference.Prerelease, 1.25m, 1.40m, TestContext.CancellationToken);
 
             result.Value!.LaunchArguments.Select(argument => argument.Value).Should().Equal("-log", "-Name=Two Words");
             result.Value.ModRootLocations.Should().Equal(Path.GetFullPath(root));
@@ -140,8 +140,23 @@ public sealed class SettingsBootstrapperTests
             result.Value.CheckForUpdates.Should().BeFalse();
             result.Value.UpdateChannel.Should().Be(UpdateChannelPreference.Prerelease);
             result.Value.AllowMultipleInstances.Should().BeTrue();
+            result.Value.TextScale.Should().Be(1.25m);
+            result.Value.IconScale.Should().Be(1.40m);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task Preferences_RejectOutOfRangeAccessibilityScalesBeforeSave()
+    {
+        var repository = MissingRepository();
+        var service = new SettingsBootstrapper(repository, new FakeImporter());
+
+        var invalidText = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [], [], false, false, WorkshopStartupRefreshPolicy.AllMods, ThemePreference.System, false, true, UpdateChannelPreference.Stable, 1.51m, 1m, TestContext.CancellationToken);
+        var invalidIcon = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [], [], false, false, WorkshopStartupRefreshPolicy.AllMods, ThemePreference.System, false, true, UpdateChannelPreference.Stable, 1m, 0.74m, TestContext.CancellationToken);
+
+        invalidText.Error!.Code.Should().Be("settings.text_scale_invalid");
+        invalidIcon.Error!.Code.Should().Be("settings.icon_scale_invalid");
     }
 
     [TestMethod]

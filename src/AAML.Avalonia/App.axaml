@@ -4,15 +4,34 @@
              xmlns:misc="clr-namespace:Zafiro.Avalonia.Misc;assembly=Zafiro.Avalonia"
              x:Class="AAML.Avalonia.App"
              RequestedThemeVariant="Default">
+  <Application.Resources>
+    <x:Double x:Key="AamlBodyFontSize">14</x:Double>
+    <x:Double x:Key="AamlSmallFontSize">11</x:Double>
+    <x:Double x:Key="AamlBadgeFontSize">12</x:Double>
+    <x:Double x:Key="AamlSectionTitleFontSize">20</x:Double>
+    <x:Double x:Key="AamlPageTitleFontSize">28</x:Double>
+    <x:Double x:Key="AamlGridRowHeight">42</x:Double>
+    <x:Double x:Key="AamlShellIconSize">32</x:Double>
+  </Application.Resources>
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://Zafiro.Avalonia/Styles.axaml" />
     <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
     <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
-    <Style Selector="TextBlock.title"><Setter Property="FontSize" Value="28" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock"><Setter Property="FontSize" Value="{DynamicResource AamlBodyFontSize}" /></Style>
+    <Style Selector="TextBlock.title"><Setter Property="FontSize" Value="{DynamicResource AamlPageTitleFontSize}" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
     <Style Selector="TextBlock.muted"><Setter Property="Opacity" Value="0.72" /></Style>
-    <Style Selector="Button"><Setter Property="MinHeight" Value="40" /><Setter Property="Padding" Value="12,8" /><Setter Property="HorizontalContentAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
-    <Style Selector="ToggleButton"><Setter Property="MinHeight" Value="40" /><Setter Property="Padding" Value="12,8" /><Setter Property="HorizontalContentAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+    <Style Selector="TextBlock.small"><Setter Property="FontSize" Value="{DynamicResource AamlSmallFontSize}" /></Style>
+    <Style Selector="TextBlock.badge"><Setter Property="FontSize" Value="{DynamicResource AamlBadgeFontSize}" /></Style>
+    <Style Selector="TextBlock.section-title"><Setter Property="FontSize" Value="{DynamicResource AamlSectionTitleFontSize}" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="ToggleButton.shell-icon"><Setter Property="MinWidth" Value="52" /><Setter Property="MinHeight" Value="52" /><Setter Property="Padding" Value="0" /><Setter Property="FontSize" Value="{DynamicResource AamlShellIconSize}" /></Style>
+    <Style Selector="Button"><Setter Property="FontSize" Value="{DynamicResource AamlBodyFontSize}" /><Setter Property="MinHeight" Value="40" /><Setter Property="Padding" Value="12,8" /><Setter Property="HorizontalContentAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+    <Style Selector="ToggleButton"><Setter Property="FontSize" Value="{DynamicResource AamlBodyFontSize}" /><Setter Property="MinHeight" Value="40" /><Setter Property="Padding" Value="12,8" /><Setter Property="HorizontalContentAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+    <Style Selector="CheckBox"><Setter Property="FontSize" Value="{DynamicResource AamlBodyFontSize}" /></Style>
+    <Style Selector="TextBox"><Setter Property="FontSize" Value="{DynamicResource AamlBodyFontSize}" /></Style>
+    <Style Selector="ComboBox"><Setter Property="FontSize" Value="{DynamicResource AamlBodyFontSize}" /></Style>
+    <Style Selector="NumericUpDown"><Setter Property="FontSize" Value="{DynamicResource AamlBodyFontSize}" /></Style>
+    <Style Selector="DataGrid"><Setter Property="FontSize" Value="{DynamicResource AamlBodyFontSize}" /></Style>
   </Application.Styles>
   <Application.DataTemplates>
     <misc:DataTemplateInclude Source="avares://Zafiro.Avalonia/DataTemplates.axaml" />

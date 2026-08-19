@@ -5,7 +5,7 @@
         <TextBlock Classes="title" Text="Avalonia Alternative Mod Launcher" />
         <TextBlock Classes="muted" Text="Game-scoped paths, launch preferences, and explicit configuration controls." />
       </StackPanel>
-      <Grid ColumnDefinitions="150,620" RowDefinitions="Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="20" RowDefinitions="Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto,8,Auto">
         <TextBlock Text="Settings" /><TextBlock Grid.Column="1" Text="{Binding Origin}" />
         <TextBlock Grid.Row="2" Text="Selected game" />
         <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="8"><ComboBox Width="250" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}" /><Button Command="{Binding SaveGame}" Content="Switch game" /></StackPanel>
@@ -26,8 +26,8 @@
                       <CheckBox AutomationProperties.AutomationId="{Binding Preset.Id, StringFormat=DashboardLaunchPreset-{0}}" Grid.RowSpan="3" MinWidth="48" MinHeight="48" VerticalContentAlignment="Center" IsEnabled="{Binding IsApplicable}" IsChecked="{Binding IsActive, Mode=TwoWay}" />
                       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                         <TextBlock FontWeight="SemiBold" Text="{Binding FriendlyName}" />
-                        <Border IsVisible="{Binding IsImported}" Padding="5,1" CornerRadius="4" Background="{DynamicResource SystemControlHighlightListLowBrush}"><TextBlock FontSize="11" Text="Imported" /></Border>
-                        <Border IsVisible="{Binding IsAdvanced}" Padding="5,1" CornerRadius="4" Background="{DynamicResource SystemControlHighlightListLowBrush}"><TextBlock FontSize="11" Text="Advanced" /></Border>
+                        <Border IsVisible="{Binding IsImported}" Padding="5,1" CornerRadius="4" Background="{DynamicResource SystemControlHighlightListLowBrush}"><TextBlock Classes="small" Text="Imported" /></Border>
+                        <Border IsVisible="{Binding IsAdvanced}" Padding="5,1" CornerRadius="4" Background="{DynamicResource SystemControlHighlightListLowBrush}"><TextBlock Classes="small" Text="Advanced" /></Border>
                       </StackPanel>
                       <TextBlock Grid.Row="1" Grid.Column="1" Classes="muted" Text="{Binding Description}" TextWrapping="Wrap" />
                       <TextBlock Grid.Row="2" Grid.Column="1" FontFamily="Cascadia Mono,Consolas" Text="{Binding ArgumentTemplate}" />
@@ -44,8 +44,18 @@
         <StackPanel Grid.Row="10" Grid.Column="1" Spacing="6"><CheckBox IsChecked="{Binding AllowLaunchWithMissingDependencies}" Content="Allow launch with missing dependencies" /><CheckBox IsChecked="{Binding CloseAfterLaunch}" Content="Close AAML after successful launch" /><CheckBox IsChecked="{Binding AllowMultipleInstances}" Content="Allow multiple AAML instances (applies next start)" /></StackPanel>
         <TextBlock Grid.Row="12" Text="Workshop checks" />
         <ComboBox AutomationProperties.AutomationId="DashboardWorkshopPolicyCombo" Grid.Row="12" Grid.Column="1" Width="250" HorizontalAlignment="Left" ItemsSource="{Binding WorkshopStartupRefreshOptions}" SelectedItem="{Binding WorkshopStartupRefresh}" />
-        <TextBlock Grid.Row="14" Text="Theme" />
-        <ComboBox Grid.Row="14" Grid.Column="1" Width="250" HorizontalAlignment="Left" ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding Theme}" />
+        <TextBlock Grid.Row="14" Text="Appearance" />
+        <StackPanel Grid.Row="14" Grid.Column="1" Spacing="8">
+          <ComboBox Width="250" HorizontalAlignment="Left" ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding Theme}" />
+          <WrapPanel Orientation="Horizontal">
+            <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" Text="Text size" />
+            <NumericUpDown AutomationProperties.AutomationId="DashboardTextScale" Width="110" Margin="0,0,16,0" Minimum="0.80" Maximum="1.50" Increment="0.05" FormatString="P0" Value="{Binding TextScale}" />
+            <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" Text="Icon size" />
+            <NumericUpDown AutomationProperties.AutomationId="DashboardIconScale" Width="110" Margin="0,0,16,0" Minimum="0.75" Maximum="1.50" Increment="0.05" FormatString="P0" Value="{Binding IconScale}" />
+            <Button AutomationProperties.AutomationId="DashboardResetAccessibilitySizing" MinHeight="48" Command="{Binding ResetAccessibilitySizing}" Content="Reset sizes" />
+          </WrapPanel>
+          <TextBlock Classes="muted" Text="Text and navigation icons scale independently. Touch targets and navigation widths stay stable." TextWrapping="Wrap" />
+        </StackPanel>
         <TextBlock Grid.Row="16" Text="Updates" />
         <StackPanel Grid.Row="16" Grid.Column="1" Orientation="Horizontal" Spacing="8"><CheckBox IsChecked="{Binding CheckForUpdates}" Content="Check for AAML updates on startup" /><ComboBox Width="180" ItemsSource="{Binding UpdateChannelOptions}" SelectedItem="{Binding UpdateChannel}" /></StackPanel>
         <TextBlock Grid.Row="18" Text="Preferences" />

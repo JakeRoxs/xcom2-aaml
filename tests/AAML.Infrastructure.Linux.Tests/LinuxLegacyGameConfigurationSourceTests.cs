@@ -9,6 +9,21 @@ namespace AAML.Infrastructure.Linux.Tests;
 public sealed class LinuxLegacyGameConfigurationSourceTests
 {
     [TestMethod]
+    public void CapabilitiesExposeOnlyQualifiedLinuxMigrationActions()
+    {
+        var capabilities = new LinuxLegacyGameConfigurationSource().Capabilities;
+
+        capabilities.CanReadActiveMods.Should().BeFalse();
+        capabilities.CanReadModRoots.Should().BeTrue();
+        capabilities.CanCleanupOverrides.Should().BeFalse();
+        capabilities.Guidance.Should().Contain("Windows-only").And.Contain("Proton");
+        var source = new LinuxLegacyGameConfigurationSource();
+        source.SupportsModRoots(GameVariant.XCom2).Should().BeTrue();
+        source.SupportsModRoots(GameVariant.XCom2WarOfTheChosen).Should().BeTrue();
+        source.SupportsModRoots(GameVariant.ChimeraSquad).Should().BeFalse();
+    }
+
+    [TestMethod]
     public async Task ChimeraIsExplicitlyUnsupportedWithoutClaimingProtonBehavior()
     {
         var result = await new LinuxLegacyGameConfigurationSource().ReadModRootsAsync(GameVariant.ChimeraSquad, "/games/chimera", [], TestContext.CancellationToken);
@@ -27,6 +42,7 @@ public sealed class LinuxLegacyGameConfigurationSourceTests
         try
         {
             Directory.CreateDirectory(binary); Directory.CreateDirectory(workshop); Directory.CreateDirectory(config);
+            await File.WriteAllTextAsync(Path.Combine(steamApps, "appmanifest_268500.acf"), "\"AppState\" { \"appid\" \"268500\" \"installdir\" \"XCOM 2\" }");
             await File.WriteAllTextAsync(Path.Combine(binary, "XCom2.exe"), string.Empty, TestContext.CancellationToken);
             var engine = Path.Combine(config, "XComEngine.ini"); var original = "[Engine.DownloadableContentEnumerator]\nModRootDirs=S:\\workshop\\content\\268500\\\n";
             await File.WriteAllTextAsync(engine, original, TestContext.CancellationToken);

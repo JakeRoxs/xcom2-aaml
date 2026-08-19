@@ -60,6 +60,7 @@ if (Test-Path -LiteralPath $OutputDirectory) {
     Remove-Item -LiteralPath $OutputDirectory -Recurse -Force
 }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+$informationalVersion = if ($Version.Contains('+', [StringComparison]::Ordinal)) { "$Version.$Commit" } else { "$Version+$Commit" }
 
 $evidenceArtifactDirectory = $OutputDirectory
 if ($singleFile) {
@@ -70,6 +71,7 @@ if ($singleFile) {
 
 dotnet publish $project -c Release -r $Rid --self-contained true --no-restore `
     -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishAot=false `
+    -p:Version=$Version -p:InformationalVersion=$informationalVersion -p:ContinuousIntegrationBuild=true `
     -p:DebugType=None -p:DebugSymbols=false -o $evidenceArtifactDirectory
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Rid" }
 
@@ -77,6 +79,7 @@ if ($singleFile) {
     dotnet publish $project -c Release -r $Rid --self-contained true --no-restore `
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true `
         -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:PublishAot=false `
+        -p:Version=$Version -p:InformationalVersion=$informationalVersion -p:ContinuousIntegrationBuild=true `
         -p:DebugType=None -p:DebugSymbols=false -o $OutputDirectory
     if ($LASTEXITCODE -ne 0) { throw "Single-file publish failed for $Rid" }
     Import-Module (Join-Path $PSScriptRoot 'dotnet-bundle.psm1') -Force

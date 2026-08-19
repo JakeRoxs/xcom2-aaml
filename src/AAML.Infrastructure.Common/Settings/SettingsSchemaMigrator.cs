@@ -27,6 +27,8 @@ internal sealed class SettingsMigrationState
     public string? UpdateChannel { get; set; }
     public string? NavigationRailMode { get; set; }
     public bool AutoSaveChanges { get; set; }
+    public decimal TextScale { get; set; }
+    public decimal IconScale { get; set; }
 }
 
 internal sealed record SettingsReadResult(AAML.Application.Settings.ApplicationSettings Settings, int SourceSchemaVersion, bool RequiresCanonicalRewrite);
@@ -49,9 +51,13 @@ internal static class SettingsSchemaMigrator
             return new SettingsReadResult(ApplicationSettingsMapper.FromCurrentDocument(current), schema, false);
         }
 
-        if (schema == 8)
+        if (schema == 9)
         {
-            var migrated = Migrate8To9(Deserialize<SettingsDocumentV8>(json, schema));
+            ValidateCanonical(root, 9);
+            root["schemaVersion"] = ApplicationSettingsDefaults.CurrentSchemaVersion;
+            root["textScale"] = ApplicationSettingsDefaults.DefaultTextScale;
+            root["iconScale"] = ApplicationSettingsDefaults.DefaultIconScale;
+            var migrated = Deserialize<CurrentSettingsDocument>(root.ToString(Formatting.None), ApplicationSettingsDefaults.CurrentSchemaVersion);
             return new SettingsReadResult(ApplicationSettingsMapper.FromCurrentDocument(migrated), schema, true);
         }
 
@@ -64,6 +70,7 @@ internal static class SettingsSchemaMigrator
             5 => FromV5(Deserialize<SettingsDocumentV5>(json, schema)),
             6 => FromV6(Deserialize<SettingsDocumentV6>(json, schema)),
             7 => FromV7(Deserialize<SettingsDocumentV7>(json, schema)),
+            8 => FromV8(Deserialize<SettingsDocumentV8>(json, schema)),
             _ => throw new InvalidDataException($"Unsupported settings schema: {schema}.")
         };
 
@@ -73,7 +80,8 @@ internal static class SettingsSchemaMigrator
         if (schema <= 5) state = Migrate5To6(state);
         if (schema <= 6) state = Migrate6To7(state);
         if (schema <= 7) state = Migrate7To8(state);
-        state = Migrate8To9(state);
+        if (schema <= 8) state = Migrate8To9(state);
+        state = Migrate9To10(state);
         return new SettingsReadResult(ApplicationSettingsMapper.FromMigratedDocument(state), schema, true);
     }
 
@@ -85,7 +93,7 @@ internal static class SettingsSchemaMigrator
         return document;
     }
 
-    private static void ValidateCanonical(JObject root)
+    private static void ValidateCanonical(JObject root, int schema = ApplicationSettingsDefaults.CurrentSchemaVersion)
     {
         string[] expected =
         [
@@ -94,29 +102,44 @@ internal static class SettingsSchemaMigrator
             "closeAfterLaunch", "workshopStartupRefresh", "theme", "allowMultipleInstances", "duplicatePreferences",
             "modGrid", "retainedWorkshopItems", "checkForUpdates", "updateChannel", "navigationRailMode", "autoSaveChanges"
         ];
+        if (schema >= 10) expected = [.. expected, "textScale", "iconScale"];
         if (!root.Properties().Select(property => property.Name).ToHashSet(StringComparer.Ordinal).SetEquals(expected))
-            throw new InvalidDataException("Schema 9 must contain exactly the canonical settings members.");
+            throw new InvalidDataException($"Schema {schema} must contain exactly the canonical settings members.");
 
         RequireType(root, JTokenType.String, "selectedGame", "workshopStartupRefresh", "theme", "updateChannel", "navigationRailMode");
         RequireType(root, JTokenType.Array, "modRootLocations", "launchArguments", "modIntents", "categories", "tags", "gameLocations", "duplicatePreferences", "retainedWorkshopItems");
         RequireType(root, JTokenType.Boolean, "allowLaunchWithMissingDependencies", "closeAfterLaunch", "allowMultipleInstances", "checkForUpdates", "autoSaveChanges");
+        if (schema >= 10)
+        {
+            RequireNumber(root, "textScale", "iconScale");
+            var textScale = root.Value<decimal>("textScale");
+            var iconScale = root.Value<decimal>("iconScale");
+            if (!ApplicationSettingsDefaults.IsTextScaleSupported(textScale)) throw new InvalidDataException("Schema 10 textScale is outside the supported range.");
+            if (!ApplicationSettingsDefaults.IsIconScaleSupported(iconScale)) throw new InvalidDataException("Schema 10 iconScale is outside the supported range.");
+        }
         if (root["gameInstallationLocation"]?.Type is not (JTokenType.String or JTokenType.Null))
-            throw new InvalidDataException("Schema 9 gameInstallationLocation must be a string or null.");
+            throw new InvalidDataException($"Schema {schema} gameInstallationLocation must be a string or null.");
 
-        if (root["modGrid"] is not JObject grid) throw new InvalidDataException("Schema 9 modGrid must be an object.");
+        if (root["modGrid"] is not JObject grid) throw new InvalidDataException($"Schema {schema} modGrid must be an object.");
         string[] gridMembers = ["includeHidden", "stateFilter", "groupByCategory", "collapsedGroups"];
         if (!grid.Properties().Select(property => property.Name).ToHashSet(StringComparer.Ordinal).SetEquals(gridMembers))
-            throw new InvalidDataException("Schema 9 modGrid must contain exactly the canonical members.");
+            throw new InvalidDataException($"Schema {schema} modGrid must contain exactly the canonical members.");
         RequireType(grid, JTokenType.Boolean, "includeHidden", "groupByCategory");
         RequireType(grid, JTokenType.Array, "collapsedGroups");
         if (grid["stateFilter"]?.Type is not (JTokenType.String or JTokenType.Null))
-            throw new InvalidDataException("Schema 9 modGrid.stateFilter must be a string or null.");
+            throw new InvalidDataException($"Schema {schema} modGrid.stateFilter must be a string or null.");
     }
 
     private static void RequireType(JObject root, JTokenType type, params string[] properties)
     {
         foreach (var property in properties)
-            if (root[property]?.Type != type) throw new InvalidDataException($"Schema 9 {property} must be {type}.");
+            if (root[property]?.Type != type) throw new InvalidDataException($"Canonical settings {property} must be {type}.");
+    }
+
+    private static void RequireNumber(JObject root, params string[] properties)
+    {
+        foreach (var property in properties)
+            if (root[property]?.Type is not (JTokenType.Integer or JTokenType.Float)) throw new InvalidDataException($"Schema 10 {property} must be numeric.");
     }
 
     private static SettingsMigrationState FromV1(SettingsDocumentV1 document) => Common(document);
@@ -163,6 +186,12 @@ internal static class SettingsSchemaMigrator
     }
 
     private static SettingsMigrationState FromV7(SettingsDocumentV7 document) => FromV6(document);
+    private static SettingsMigrationState FromV8(SettingsDocumentV8 document)
+    {
+        var state = FromV7(document);
+        state.NavigationRailMode = document.NavigationRailMode ?? throw new InvalidDataException("Schema 8 navigationRailMode is required.");
+        return state;
+    }
 
     private static SettingsMigrationState Common(SettingsDocumentBase document)
     {
@@ -235,26 +264,10 @@ internal static class SettingsSchemaMigrator
         return state;
     }
 
-    private static CurrentSettingsDocument Migrate8To9(SettingsDocumentV8 document) => new(
-        ApplicationSettingsDefaults.CurrentSchemaVersion,
-        document.SelectedGame ?? throw new InvalidDataException("selectedGame is required."),
-        document.GameInstallationLocation,
-        document.ModRootLocations ?? throw new InvalidDataException("Schema 8 modRootLocations is required."),
-        document.LaunchArguments ?? throw new InvalidDataException("Schema 8 launchArguments is required."),
-        document.ModIntents ?? throw new InvalidDataException("Schema 8 modIntents is required."),
-        document.Categories ?? throw new InvalidDataException("Schema 8 categories is required."),
-        document.Tags ?? throw new InvalidDataException("Schema 8 tags is required."),
-        document.AllowLaunchWithMissingDependencies,
-        document.GameLocations ?? throw new InvalidDataException("Schema 8 gameLocations is required."),
-        document.CloseAfterLaunch,
-        document.WorkshopStartupRefresh ?? throw new InvalidDataException("Schema 8 workshopStartupRefresh is required."),
-        document.Theme ?? throw new InvalidDataException("Schema 8 theme is required."),
-        document.AllowMultipleInstances,
-        document.DuplicatePreferences ?? throw new InvalidDataException("Schema 8 duplicatePreferences is required."),
-        document.ModGrid ?? throw new InvalidDataException("Schema 8 modGrid is required."),
-        document.RetainedWorkshopItems ?? throw new InvalidDataException("Schema 8 retainedWorkshopItems is required."),
-        document.CheckForUpdates ?? throw new InvalidDataException("Schema 8 checkForUpdates is required."),
-        document.UpdateChannel ?? throw new InvalidDataException("Schema 8 updateChannel is required."),
-        document.NavigationRailMode ?? throw new InvalidDataException("Schema 8 navigationRailMode is required."),
-        false);
+    private static SettingsMigrationState Migrate9To10(SettingsMigrationState state)
+    {
+        state.TextScale = ApplicationSettingsDefaults.DefaultTextScale;
+        state.IconScale = ApplicationSettingsDefaults.DefaultIconScale;
+        return state;
+    }
 }

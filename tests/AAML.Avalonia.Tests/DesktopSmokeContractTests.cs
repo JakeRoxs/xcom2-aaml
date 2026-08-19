@@ -39,9 +39,14 @@ public sealed class DesktopSmokeContractTests
         harness.Should().Contain("$receipt.expectedManifestCount -ne 12");
         harness.Should().Contain("@('Completed', 'CompletedWithConflicts')");
         harness.Should().Contain("$process.CloseMainWindow()");
-        harness.Should().Contain("schemaVersion = 9");
+        harness.Should().Contain("schemaVersion = 10");
         harness.Should().Contain("autoSaveChanges = $false");
+        harness.Should().Contain("textScale = 1.0; iconScale = 1.0");
         harness.Should().Contain("'DashboardAutoSaveToggle'");
+        harness.Should().Contain("'ShellRailCollapseButton'").And.Contain("'ShellRailExpandButton'");
+        harness.Should().Contain("'DashboardTextScale'").And.Contain("'DashboardIconScale'").And.Contain("'DashboardResetAccessibilitySizing'");
+        var app = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Contracts", "App.axaml.cs"));
+        app.IndexOf("ApplyAccessibilitySizing(startupSettings", StringComparison.Ordinal).Should().BeLessThan(app.IndexOf("new AamlShellView", StringComparison.Ordinal));
         harness.Should().NotContain("mouse_event");
         harness.Should().NotContain("SendKeys");
     }

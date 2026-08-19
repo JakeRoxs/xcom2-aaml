@@ -11,27 +11,33 @@ public static class SteamProbeRunner
 
     /// <summary>Runs the probe and returns its process exit code.</summary>
     /// <param name="args">Probe options such as a Workshop ID or dependency listing request.</param>
+    /// <param name="cancellationToken">Cancels Steam queries and probe execution.</param>
     /// <returns>The process exit code describing probe success or the failed stage.</returns>
-    public static async Task<int> RunAsync(string[] args)
+    public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken = default)
     {
-        var appIdPath = Path.Combine(AppContext.BaseDirectory, "steam_appid.txt");
-        await File.WriteAllTextAsync(appIdPath, Xcom2AppId.ToString(System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
+        if (!TryParseArguments(args, out var requestedId, out var listDependencies, out var argumentError))
+        {
+            Print(new { success = false, stage = "arguments", error = argumentError });
+            return 64;
+        }
 
+        var appIdPath = Path.Combine(AppContext.BaseDirectory, "steam_appid.txt");
         try
         {
+            await File.WriteAllTextAsync(appIdPath, Xcom2AppId.ToString(System.Globalization.CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
             await using var client = SteamWorkshopClient.Create(new SteamOptions(TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(20)));
-            var subscriptions = await client.Workshop.GetSubscribedItemsAsync(CancellationToken.None).ConfigureAwait(false);
+            var subscriptions = await client.Workshop.GetSubscribedItemsAsync(cancellationToken).ConfigureAwait(false);
             if (!subscriptions.IsSuccess)
             {
                 Print(new { success = false, stage = "initialize/subscriptions", error = subscriptions.Error, nativeModules = NativeModules() });
                 return 2;
             }
 
-            var requested = ParseRequestedId(args) ?? subscriptions.Value!.FirstOrDefault();
+            var requested = requestedId ?? subscriptions.Value!.FirstOrDefault();
             object? item = null;
             if (requested.Value != 0)
             {
-                var details = await client.Workshop.GetItemAsync(requested, CancellationToken.None).ConfigureAwait(false);
+                var details = await client.Workshop.GetItemAsync(requested, cancellationToken).ConfigureAwait(false);
                 if (!details.IsSuccess)
                 {
                     Print(new { success = false, stage = "details", subscribedCount = subscriptions.Value!.Count, requested = requested.Value, error = details.Error, nativeModules = NativeModules() });
@@ -41,9 +47,9 @@ public static class SteamProbeRunner
             }
 
             IReadOnlyList<object>? dependencyItems = null;
-            if (args.Contains("--list-dependencies", StringComparer.Ordinal))
+            if (listDependencies)
             {
-                var details = await client.Workshop.GetItemsAsync(subscriptions.Value!, null, CancellationToken.None).ConfigureAwait(false);
+                var details = await client.Workshop.GetItemsAsync(subscriptions.Value!, null, cancellationToken).ConfigureAwait(false);
                 if (!details.IsSuccess)
                 {
                     Print(new { success = false, stage = "dependency-details", subscribedCount = subscriptions.Value!.Count, error = details.Error, nativeModules = NativeModules() });
@@ -73,10 +79,36 @@ public static class SteamProbeRunner
         }
     }
 
-    private static WorkshopId? ParseRequestedId(string[] arguments)
+    private static bool TryParseArguments(string[] arguments, out WorkshopId? requestedId, out bool listDependencies, out string? error)
     {
-        var value = arguments.FirstOrDefault(argument => argument.StartsWith("--workshop-id=", StringComparison.Ordinal));
-        return value is not null && ulong.TryParse(value["--workshop-id=".Length..], out var id) && id != 0 ? new WorkshopId(id) : null;
+        requestedId = null;
+        listDependencies = false;
+        error = null;
+        foreach (var argument in arguments)
+        {
+            if (argument == "--list-dependencies")
+            {
+                if (listDependencies) { error = "The --list-dependencies option may be specified only once."; return false; }
+                listDependencies = true;
+                continue;
+            }
+
+            if (argument.StartsWith("--workshop-id=", StringComparison.Ordinal))
+            {
+                if (requestedId is not null) { error = "The --workshop-id option may be specified only once."; return false; }
+                if (!ulong.TryParse(argument["--workshop-id=".Length..], out var id) || id == 0)
+                {
+                    error = "The --workshop-id option requires a nonzero unsigned integer.";
+                    return false;
+                }
+                requestedId = new WorkshopId(id);
+                continue;
+            }
+
+            error = $"Unknown Steam probe option: {argument}";
+            return false;
+        }
+        return true;
     }
 
     private static IReadOnlyList<string> NativeModules()

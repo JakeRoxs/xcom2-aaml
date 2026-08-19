@@ -53,11 +53,41 @@ public sealed class WindowsProcessServicesTests
         directory.Error!.Code.Should().Be("shell.directory_not_found");
     }
 
+    [TestMethod]
+    public async Task ExternalLauncher_PassesDirectoryAsOneNonInterpolatedShellTarget()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "AAML & folder Ω " + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var starter = new RecordingStarter();
+
+            var result = await new WindowsExternalLauncher(starter).OpenDirectoryAsync(directory, TestContext.CancellationToken);
+
+            result.IsSuccess.Should().BeTrue();
+            starter.Last!.FileName.Should().Be(directory);
+            starter.Last.UseShellExecute.Should().BeTrue();
+            starter.Last.ArgumentList.Should().BeEmpty();
+        }
+        finally { Directory.Delete(directory); }
+    }
+
+    [TestMethod]
+    public async Task ExternalLauncher_AcceptsShellActivationWithoutNewProcessHandle()
+    {
+        var starter = new RecordingStarter { Result = null };
+
+        var result = await new WindowsExternalLauncher(starter).OpenUriAsync(new Uri("https://example.invalid"), TestContext.CancellationToken);
+
+        result.IsSuccess.Should().BeTrue("the OS may reuse an existing Explorer or browser process");
+    }
+
     public TestContext TestContext { get; set; }
 
     private sealed class RecordingStarter : IProcessStarter
     {
+        public int? Result { get; init; } = 123;
         public ProcessStartInfo? Last { get; private set; }
-        public int? Start(ProcessStartInfo startInfo) { Last = startInfo; return 123; }
+        public int? Start(ProcessStartInfo startInfo) { Last = startInfo; return Result; }
     }
 }

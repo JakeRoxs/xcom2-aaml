@@ -23,7 +23,8 @@ public sealed class JsonSettingsRepositoryTests
     [DataRow(7)]
     [DataRow(8)]
     [DataRow(9)]
-    public async Task EverySchemaFixture_LoadsAsCanonicalSchemaNine(int schema)
+    [DataRow(10)]
+    public async Task EverySchemaFixture_LoadsAsCanonicalCurrentSchema(int schema)
     {
         var root = TemporaryRoot();
         var paths = new TestPaths(root);
@@ -35,7 +36,7 @@ public sealed class JsonSettingsRepositoryTests
             var loaded = await repository.LoadAsync(TestContext.CancellationToken);
 
             loaded.IsSuccess.Should().BeTrue(loaded.Error?.Message);
-            loaded.Value!.SchemaVersion.Should().Be(9);
+            loaded.Value!.SchemaVersion.Should().Be(ApplicationSettingsDefaults.CurrentSchemaVersion);
             loaded.Value.ModRootLocations.Should().NotBeNull();
             loaded.Value.LaunchArguments.Should().NotBeNull();
             loaded.Value.ModIntents.Should().NotBeNull();
@@ -46,10 +47,12 @@ public sealed class JsonSettingsRepositoryTests
             loaded.Value.ModGrid.Should().NotBeNull();
             loaded.Value.RetainedWorkshopItems.Should().NotBeNull();
             loaded.Value.LocationFor(loaded.Value.SelectedGame).Should().BeEquivalentTo(new GameLocationSettings(loaded.Value.GameInstallationLocation, loaded.Value.ModRootLocations));
-            loaded.Value.NavigationRailMode.Should().Be(schema is 8 or 9 ? NavigationRailMode.Compact : NavigationRailMode.Expanded);
-            loaded.Value.AutoSaveChanges.Should().Be(schema == 9);
-            repository.LastLoadReport.Should().Be(new SettingsLoadReport(schema, schema < 9, schema < 9));
-            JObject.Parse(await File.ReadAllTextAsync(path, TestContext.CancellationToken)).Value<int>("schemaVersion").Should().Be(9);
+            loaded.Value.NavigationRailMode.Should().Be(schema >= 8 ? NavigationRailMode.Compact : NavigationRailMode.Expanded);
+            loaded.Value.AutoSaveChanges.Should().Be(schema >= 9);
+            loaded.Value.TextScale.Should().Be(schema == 10 ? 1.25m : ApplicationSettingsDefaults.DefaultTextScale);
+            loaded.Value.IconScale.Should().Be(schema == 10 ? 1.40m : ApplicationSettingsDefaults.DefaultIconScale);
+            repository.LastLoadReport.Should().Be(new SettingsLoadReport(schema, schema < 10, schema < 10));
+            JObject.Parse(await File.ReadAllTextAsync(path, TestContext.CancellationToken)).Value<int>("schemaVersion").Should().Be(10);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
@@ -227,9 +230,55 @@ public sealed class JsonSettingsRepositoryTests
     [TestMethod]
     public async Task UnknownFutureSchemaAndContradictoryCurrentLocations_FailClosed()
     {
-        await AssertFixtureMutationInvalidAsync(9, json => json["schemaVersion"] = 10);
-        await AssertFixtureMutationInvalidAsync(9, json => json["gameLocations"]![0]!["installationLocation"] = "C:\\Contradiction");
-        await AssertFixtureMutationInvalidAsync(9, json => json["modGrid"]!["includeHidden"]!.Parent!.Remove());
+        await AssertFixtureMutationInvalidAsync(10, json => json["schemaVersion"] = 11);
+        await AssertFixtureMutationInvalidAsync(10, json => json["gameLocations"]![0]!["installationLocation"] = "C:\\Contradiction");
+        await AssertFixtureMutationInvalidAsync(10, json => json["modGrid"]!["includeHidden"]!.Parent!.Remove());
+    }
+
+    [TestMethod]
+    public async Task CurrentAccessibilityScales_AreRequiredNumericAndBounded()
+    {
+        await AssertFixtureMutationInvalidAsync(10, json => json.Property("textScale")!.Remove());
+        await AssertFixtureMutationInvalidAsync(10, json => json["iconScale"] = "1.0");
+        await AssertFixtureMutationInvalidAsync(10, json => json["textScale"] = 0.79m);
+        await AssertFixtureMutationInvalidAsync(10, json => json["textScale"] = 1.51m);
+        await AssertFixtureMutationInvalidAsync(10, json => json["iconScale"] = 0.74m);
+        await AssertFixtureMutationInvalidAsync(10, json => json["iconScale"] = 1.51m);
+    }
+
+    [TestMethod]
+    public async Task CurrentAccessibilityScaleBoundaries_AreAccepted()
+    {
+        var root = TemporaryRoot();
+        var paths = new TestPaths(root);
+        try
+        {
+            var path = await SeedFixtureAsync(paths, 10);
+            var json = JObject.Parse(await File.ReadAllTextAsync(path, TestContext.CancellationToken));
+            json["textScale"] = ApplicationSettingsDefaults.MinimumTextScale;
+            json["iconScale"] = ApplicationSettingsDefaults.MaximumIconScale;
+            await File.WriteAllTextAsync(path, json.ToString(), TestContext.CancellationToken);
+
+            var loaded = await new JsonSettingsRepository(paths).LoadAsync(TestContext.CancellationToken);
+
+            loaded.IsSuccess.Should().BeTrue(loaded.Error?.Message);
+            loaded.Value!.TextScale.Should().Be(ApplicationSettingsDefaults.MinimumTextScale);
+            loaded.Value.IconScale.Should().Be(ApplicationSettingsDefaults.MaximumIconScale);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task Save_RejectsOutOfRangeAccessibilityScales()
+    {
+        var root = TemporaryRoot();
+        try
+        {
+            var repository = new JsonSettingsRepository(new TestPaths(root));
+            (await repository.SaveAsync(Settings("C:\\Games\\XCOM 2") with { TextScale = 1.51m }, TestContext.CancellationToken)).IsSuccess.Should().BeFalse();
+            (await repository.SaveAsync(Settings("C:\\Games\\XCOM 2") with { IconScale = 0.74m }, TestContext.CancellationToken)).IsSuccess.Should().BeFalse();
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
     [TestMethod]
@@ -376,7 +425,7 @@ public sealed class JsonSettingsRepositoryTests
 
             (await repository.LoadAsync(TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
 
-            repository.LastLoadReport.Should().Be(new SettingsLoadReport(9, false, false));
+            repository.LastLoadReport.Should().Be(new SettingsLoadReport(10, false, false));
             (await File.ReadAllBytesAsync(path, TestContext.CancellationToken)).Should().Equal(canonical);
             (await File.ReadAllBytesAsync(path + ".bak", TestContext.CancellationToken)).Should().Equal(backup);
             Directory.EnumerateFiles(paths.ConfigurationDirectory, "*.tmp").Should().BeEmpty();
@@ -398,7 +447,7 @@ public sealed class JsonSettingsRepositoryTests
             var loaded = await repository.LoadAsync(TestContext.CancellationToken);
 
             loaded.IsSuccess.Should().BeTrue();
-            loaded.Value!.SchemaVersion.Should().Be(9);
+            loaded.Value!.SchemaVersion.Should().Be(10);
             repository.LastLoadReport!.CanonicalRewriteAttempted.Should().BeTrue();
             repository.LastLoadReport.CanonicalRewriteSucceeded.Should().BeFalse();
             repository.LastLoadReport.RewriteError!.Code.Should().Be("settings.write_failed");

@@ -6,7 +6,7 @@
 
 This report summarizes CycloneDX 1.6 evidence generated from completed staged `win-x64` and `linux-x64` payloads. The generator reads every shipped first-party `.deps.json`, requires its active runtime target to match the staged RID, follows `runtime`, `runtimeTargets`, `native`, and `resources` assets, and verifies that each selected asset exists in the payload. NuGet assets are byte-compared with their restored package files; `.deps.json` package hashes are checked against locked restore metadata. Runtime packs and manifest-pinned Steamworks assets are classified separately.
 
-The Linux closure merges `AAML.Avalonia`, `AAML.ProtonWrapper`, and `AAML.SteamProbe`. Components are deduplicated by case-insensitive name and version while retaining every `aaml:shipped-asset` and `aaml:source-deps` property. Every shipped DLL, executable, ELF app host, native library, and resource satellite must have exactly one owner. Missing, conflicting, multiply-attributed, or unattributed assets fail generation.
+The Linux closure merges `AAML.Avalonia` and the consolidated `AAML.ProtonWrapper` helper host. Components are deduplicated by case-insensitive name and version while retaining every `aaml:shipped-asset` and `aaml:source-deps` property. Every shipped DLL, executable, ELF app host, native library, and resource satellite must have exactly one owner. Missing, conflicting, multiply-attributed, or unattributed assets fail generation.
 
 Only components with a physically staged asset enter the closure and third-party notices. Restored-only build, test, analyzer, source-generator, macOS, WebAssembly, and wrong-RID packages are excluded. The generated `sbom.cdx.json` and `THIRD-PARTY-NOTICES.txt` files in each artifact are the authoritative per-file inventory and license evidence.
 
@@ -23,7 +23,7 @@ Only components with a physically staged asset enter the closure and third-party
 
 - Deduplicated cross-platform component name+version entries: 94
 - Authoritative license catalog mappings: 35
-- Runtime-pack mapping: `runtimepack.Microsoft.NETCore.App.Runtime.{win-x64,linux-x64}` 10.0.10, MIT
+- Runtime-pack mapping: `runtimepack.Microsoft.NETCore.App.Runtime.{win-x64,linux-x64}` 10.0.10 or 10.0.11, MIT
 - Steamworks.NET source revision: `cde64110bff012829b59cc16fe2c4fc3a0371e8d`, MIT
 - Valve Steamworks SDK native redistributables: 1.64, Steamworks SDK agreement
 

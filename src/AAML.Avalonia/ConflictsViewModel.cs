@@ -8,7 +8,7 @@ using Zafiro.UI.Shell.Utils;
 namespace AAML.Avalonia;
 
 [Section("conflicts", "fa-triangle-exclamation", 2, FriendlyName = "Conflicts")]
-public sealed class ConflictsViewModel : ReactiveObject
+public sealed class ConflictsViewModel : ReactiveObject, IDisposable
 {
     private readonly ApplicationSession session;
     private readonly IHierarchicalShell shell;
@@ -19,9 +19,9 @@ public sealed class ConflictsViewModel : ReactiveObject
     {
         this.session = session;
         this.shell = shell;
-        session.Conflicts.CollectionChanged += (_, _) => RefreshRows();
-        session.PropertyChanged += (_, _) => this.RaisePropertyChanged(nameof(Status));
-        Refresh = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.RefreshModsAsync(CancellationToken.None))).Enhance(text: "Refresh conflicts", name: "RefreshConflicts");
+        session.Conflicts.CollectionChanged += OnConflictsChanged;
+        session.PropertyChanged += OnSessionPropertyChanged;
+        Refresh = ReactiveCommand.CreateFromTask(async () => ToCommand(await session.RefreshConflictsAsync(CancellationToken.None))).Enhance(text: "Refresh conflicts", name: "RefreshConflicts");
         ShowInMods = ReactiveCommand.Create(() =>
         {
             if (SelectedConflict is null) return Result.Failure("Select a conflict.");
@@ -58,4 +58,13 @@ public sealed class ConflictsViewModel : ReactiveObject
     }
 
     private static Result ToCommand(AAML.Application.Common.Result result) => result.IsSuccess ? Result.Success() : Result.Failure(result.Error!.Message);
+
+    private void OnConflictsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs args) => RefreshRows();
+    private void OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args) => this.RaisePropertyChanged(nameof(Status));
+
+    public void Dispose()
+    {
+        session.Conflicts.CollectionChanged -= OnConflictsChanged;
+        session.PropertyChanged -= OnSessionPropertyChanged;
+    }
 }

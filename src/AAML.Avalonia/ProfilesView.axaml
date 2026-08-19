@@ -18,7 +18,7 @@
       <Button Margin="8,0,0,0" Command="{Binding Refresh}" Content="Refresh" />
     </WrapPanel>
     <Grid Grid.Row="4" RowDefinitions="Auto,8,Auto">
-      <WrapPanel><Button AutomationProperties.AutomationId="ProfilesConfirmLegacyButton" Command="{Binding ConfirmLegacyPortable}" Content="Import with profile metadata" /><Button Margin="8,0,0,0" Command="{Binding ConfirmLegacyAdopt}" Content="Import and adopt taxonomy" /><Button Margin="8,0,0,0" Command="{Binding ConfirmLegacyIgnore}" Content="Import identities only" /></WrapPanel>
+      <WrapPanel><Button AutomationProperties.AutomationId="ProfilesConfirmLegacyButton" IsEnabled="{Binding CanConfirmLegacy}" Command="{Binding ConfirmLegacyPortable}" Content="Import with profile metadata" /><Button Margin="8,0,0,0" IsEnabled="{Binding CanConfirmLegacy}" Command="{Binding ConfirmLegacyAdopt}" Content="Import and adopt taxonomy" /><Button Margin="8,0,0,0" IsEnabled="{Binding CanConfirmLegacy}" Command="{Binding ConfirmLegacyIgnore}" Content="Import identities only" /></WrapPanel>
       <TextBox Grid.Row="2" Text="{Binding LegacyReport}" IsReadOnly="True" AcceptsReturn="True" MaxHeight="150" ScrollViewer.VerticalScrollBarVisibility="Auto" />
     </Grid>
     <Grid Grid.Row="6" RowDefinitions="Auto,8,2*,8,Auto,8,*">

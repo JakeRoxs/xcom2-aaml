@@ -27,7 +27,9 @@ public sealed record ApplicationSettings(
     bool CheckForUpdates = true,
     UpdateChannelPreference UpdateChannel = UpdateChannelPreference.Stable,
     NavigationRailMode NavigationRailMode = NavigationRailMode.Expanded,
-    bool AutoSaveChanges = false)
+    bool AutoSaveChanges = false,
+    decimal TextScale = ApplicationSettingsDefaults.DefaultTextScale,
+    decimal IconScale = ApplicationSettingsDefaults.DefaultIconScale)
 {
     public GameLocationSettings LocationFor(GameVariant variant)
     {

@@ -45,6 +45,8 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     private readonly Dictionary<ModKey, string> workshopErrors = [];
     private readonly Dictionary<WorkshopId, string> retainedWorkshopStatuses = [];
     private WorkshopAvailability workshopAvailability = WorkshopAvailability.Unknown;
+    private SessionUpdateCheck? updateCheck;
+    private long updateCheckRevision;
     private ModDuplicateReport duplicateReport = new([], new Dictionary<ModKey, DuplicateStatus>());
     private IReadOnlySet<ModKey> focusedModKeys = new HashSet<ModKey>();
     private string modSearchText = string.Empty;
@@ -58,6 +60,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     public void NotifyAutoSaveOwnerChanged(string owner, bool immediate = false) => autoSave.Changed(owner, immediate);
     public Task<Result> FlushAutoSaveOwnerAsync(string owner, CancellationToken cancellationToken) => autoSave.FlushAsync(owner, cancellationToken);
     public void CancelAutoSaveOwner(string owner) => autoSave.Cancel(owner);
+    public Task CancelAutoSaveOwnerAndWaitAsync(string owner, CancellationToken cancellationToken) => autoSave.CancelAndWaitAsync(owner, cancellationToken);
 
     public ApplicationSettings? Settings
     {
@@ -84,6 +87,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     public IReadOnlyList<Tag> Tags => Settings?.Tags ?? [];
     public ReleaseInfo? LatestRelease { get; private set; }
     public IReadOnlyList<ModInstallation> DiscoveredMods => discoveredMods;
+    public SessionUpdateCheck? UpdateCheck { get => updateCheck; private set => uiDispatcher.Invoke(() => this.RaiseAndSetIfChanged(ref updateCheck, value)); }
 
     internal void PrimeSettings(ApplicationSettings initialSettings)
     {
@@ -98,7 +102,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     {
         Settings = migrated;
         Status = "Migration applied";
-        return await RefreshModsAsync(cancellationToken).ConfigureAwait(false);
+        return await RefreshModsAndConfigurationsAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<Result> InitializeAsync(CancellationToken cancellationToken)
@@ -124,7 +128,6 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
             autoSave.SetEnabled(Settings.AutoSaveChanges);
             autoSave.Register(ModsAutoSaveOwner, () => HasUnsavedModDrafts || modGridRevision != 0, SaveModsOwnedDraftsAsync,
                 token => uiDispatcher.InvokeAsync(() => HasUnsavedModDrafts || modGridRevision != 0, token));
-            initialized = true;
             Status = $"Settings {Origin}";
             if (string.IsNullOrWhiteSpace(Settings.GameInstallationLocation))
             {
@@ -138,12 +141,15 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
             }
             var refreshed = await RefreshModsAsync(cancellationToken);
             if (!refreshed.IsSuccess) return refreshed;
+            var configurations = await RefreshConfigurationDocumentsAsync(cancellationToken);
+            if (!configurations.IsSuccess) return configurations;
             var profiles = await RefreshProfilesAsync(cancellationToken);
             if (!profiles.IsSuccess) return profiles;
             await ApplyStartupWorkshopPolicyAsync(cancellationToken);
             diagnostics.Write(LocalLogLevel.Information, "application.initialization_completed", "Application initialization completed.", new Dictionary<string, string> { ["game"] = Settings.SelectedGame.ToString(), ["origin"] = Origin.ToString()! });
             if (Settings.CheckForUpdates) await CheckForUpdatesAsync(false, cancellationToken).ConfigureAwait(false);
             await diagnostics.FlushAsync(cancellationToken).ConfigureAwait(false);
+            initialized = true;
             return Result.Success();
         }
         finally { initialization.Release(); }
@@ -152,15 +158,22 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     public async Task<Result<UpdateCheckResult>> CheckForUpdatesAsync(bool manual, CancellationToken cancellationToken)
     {
         if (Settings is null) return Result<UpdateCheckResult>.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        var revision = Interlocked.Increment(ref updateCheckRevision);
+        var channel = Settings.UpdateChannel;
         diagnostics.Write(LocalLogLevel.Information, "update.check_started", manual ? "Manual update check started." : "Startup update check started.");
-        var result = await updateChecks.CheckAsync(Settings.UpdateChannel, cancellationToken).ConfigureAwait(false);
+        var result = await updateChecks.CheckAsync(channel, cancellationToken).ConfigureAwait(false);
+        if (revision != Volatile.Read(ref updateCheckRevision)) return result;
         if (!result.IsSuccess)
         {
+            UpdateCheck = new SessionUpdateCheck(manual, DateTimeOffset.UtcNow, channel, null, result.Error);
+            LatestRelease = null;
+            this.RaisePropertyChanged(nameof(LatestRelease));
             diagnostics.Write(LocalLogLevel.Warning, "update.check_failed", result.Error!.Message, new Dictionary<string, string> { ["code"] = result.Error.Code });
             if (manual) Status = result.Error.Message;
             await diagnostics.FlushAsync(cancellationToken).ConfigureAwait(false);
             return result;
         }
+        UpdateCheck = new SessionUpdateCheck(manual, DateTimeOffset.UtcNow, channel, result.Value, null);
         LatestRelease = result.Value!.Status == UpdateCheckStatus.UpdateAvailable ? result.Value.Release : null;
         if (manual || LatestRelease is not null) Status = result.Value.Message;
         this.RaisePropertyChanged(nameof(LatestRelease));
@@ -175,7 +188,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value;
         Status = $"Selected {game}";
-        return await RefreshModsAsync(cancellationToken);
+        return await RefreshModsAndConfigurationsAsync(cancellationToken);
     }
 
     public async Task<Result> SetGameInstallationAsync(string installationPath, CancellationToken cancellationToken)
@@ -188,10 +201,10 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         return Result.Success();
     }
 
-    public async Task<Result> SavePreferencesAsync(IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> roots, bool allowMissingDependencies, bool closeAfterLaunch, WorkshopStartupRefreshPolicy startupRefresh, ThemePreference theme, bool allowMultipleInstances, bool checkForUpdates, UpdateChannelPreference updateChannel, CancellationToken cancellationToken)
+    public async Task<Result> SavePreferencesAsync(IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> roots, bool allowMissingDependencies, bool closeAfterLaunch, WorkshopStartupRefreshPolicy startupRefresh, ThemePreference theme, bool allowMultipleInstances, bool checkForUpdates, UpdateChannelPreference updateChannel, decimal textScale, decimal iconScale, CancellationToken cancellationToken)
     {
         if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
-        var result = await autoSave.SerializeAsync(token => bootstrapper.SavePreferencesAsync(Settings, arguments, roots, allowMissingDependencies, closeAfterLaunch, startupRefresh, theme, allowMultipleInstances, checkForUpdates, updateChannel, token), cancellationToken);
+        var result = await autoSave.SerializeAsync(token => bootstrapper.SavePreferencesAsync(Settings, arguments, roots, allowMissingDependencies, closeAfterLaunch, startupRefresh, theme, allowMultipleInstances, checkForUpdates, updateChannel, textScale, iconScale, token), cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value;
         Status = "Preferences saved";
@@ -205,16 +218,30 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         Settings = result.Value!.Settings;
         Origin = result.Value.Origin;
         ResetDraftsFromSettings();
-        return await RefreshModsAsync(cancellationToken);
+        return await RefreshModsAndConfigurationsAsync(cancellationToken);
     }
 
-    public void DiscardModDrafts()
+    public async Task<Result<ApplicationSettings>> ReadPersistedSettingsAsync(CancellationToken cancellationToken)
+    {
+        var result = await bootstrapper.InitializeAsync(cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess) { Status = result.Error!.Message; return Result<ApplicationSettings>.Failure(result.Error); }
+        return Result<ApplicationSettings>.Success(result.Value!.Settings);
+    }
+
+    public void DiscardModsOwnedDrafts()
     {
         autoSave.Cancel(ModsAutoSaveOwner);
         modDraftRevision++;
         ResetDraftsFromSettings();
+        var grid = Settings?.ModGrid ?? ModGridPreferences.Default;
+        includeHidden = grid.IncludeHidden;
+        modStateFilter = grid.StateFilter;
+        groupModsByCategory = grid.GroupByCategory;
+        collapsedModGroups.Clear();
+        foreach (var key in grid.CollapsedGroups) collapsedModGroups.Add(key);
+        modGridRevision = 0;
         ProjectMods(modSearchText, groupModsByCategory);
-        Status = "Discarded unsaved activation and order edits";
+        Status = "Discarded unsaved mod and view edits";
     }
 
     public async Task<Result> DetectSteamAsync(CancellationToken cancellationToken)
@@ -225,7 +252,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value!.Settings;
         Status = $"Detected {Settings.GameInstallationLocation}";
-        return await RefreshModsAsync(cancellationToken);
+        return await RefreshModsAndConfigurationsAsync(cancellationToken);
     }
 
     public async Task<Result> RefreshModsAsync(CancellationToken cancellationToken)
@@ -235,6 +262,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         var result = await catalog.DiscoverAsync(Settings.ModRootLocations, null, cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; diagnostics.Write(LocalLogLevel.Warning, "mods.discovery_failed", result.Error.Message, new Dictionary<string, string> { ["code"] = result.Error.Code }); return Result.Failure(result.Error); }
         discoveredMods = result.Value!;
+        this.RaisePropertyChanged(nameof(DiscoveredMods));
         var discoveredKeys = discoveredMods.Select(mod => mod.Key).ToHashSet();
         foreach (var key in workshopStates.Keys.Where(key => !discoveredKeys.Contains(key)).ToArray()) workshopStates.Remove(key);
         foreach (var key in workshopErrors.Keys.Where(key => !discoveredKeys.Contains(key)).ToArray()) workshopErrors.Remove(key);
@@ -248,14 +276,30 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
             modDrafts[mod.Key] = new ModIntentEdit(mod.Key, intent?.IsActive ?? false, intent?.ExplicitOrder);
         }
         await RefreshDependencyStatusesAsync(cancellationToken);
-        var conflictResult = await conflictService.AnalyzeAsync(discoveredMods, ActiveModKeys(), cancellationToken);
+        var conflictResult = await conflictService.AnalyzeAsync(discoveredMods, EffectiveActiveModKeys(), cancellationToken);
         if (!conflictResult.IsSuccess) { Status = conflictResult.Error!.Message; return Result.Failure(conflictResult.Error); }
         ApplyConflicts(conflictResult.Value!);
-        var configurations = await RefreshConfigurationDocumentsAsync(cancellationToken);
-        if (!configurations.IsSuccess) return configurations;
         ProjectMods(modSearchText, groupModsByCategory);
         Status = $"Discovered {discoveredMods.Count:N0} mods";
         diagnostics.Write(LocalLogLevel.Information, "mods.discovery_completed", "Mod discovery completed.", new Dictionary<string, string> { ["count"] = discoveredMods.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+        return Result.Success();
+    }
+
+    public async Task<Result> RefreshModsAndConfigurationsAsync(CancellationToken cancellationToken)
+    {
+        var mods = await RefreshModsAsync(cancellationToken).ConfigureAwait(false);
+        return mods.IsSuccess ? await RefreshConfigurationDocumentsAsync(cancellationToken).ConfigureAwait(false) : mods;
+    }
+
+    public async Task<Result> RefreshConflictsAsync(CancellationToken cancellationToken)
+    {
+        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        Status = "Analyzing conflicts";
+        var result = await conflictService.AnalyzeAsync(discoveredMods, EffectiveActiveModKeys(), cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
+        ApplyConflicts(result.Value!);
+        ProjectMods(modSearchText, groupModsByCategory);
+        Status = $"Analyzed {discoveredMods.Count:N0} mods for conflicts";
         return Result.Success();
     }
 
@@ -484,7 +528,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
             RaiseDraftStateChanged();
         }, cancellationToken).ConfigureAwait(false);
         await RefreshDependencyStatusesAsync(cancellationToken);
-        var activeKeys = await uiDispatcher.InvokeAsync(ActiveModKeys, cancellationToken).ConfigureAwait(false);
+        var activeKeys = await uiDispatcher.InvokeAsync(EffectiveActiveModKeys, cancellationToken).ConfigureAwait(false);
         var conflictResult = await conflictService.SetActiveAsync(activeKeys, cancellationToken).ConfigureAwait(false);
         if (!conflictResult.IsSuccess)
         {
@@ -568,7 +612,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         Settings = result.Value.Settings;
         ResetDraftsFromSettings();
         await RefreshDependencyStatusesAsync(cancellationToken);
-        var conflictResult = await conflictService.SetActiveAsync(ActiveModKeys(), cancellationToken);
+        var conflictResult = await conflictService.SetActiveAsync(EffectiveActiveModKeys(), cancellationToken);
         if (!conflictResult.IsSuccess) { Status = conflictResult.Error!.Message; return Result.Failure(conflictResult.Error); }
         ApplyConflicts(conflictResult.Value!);
         ProjectMods(modSearchText, groupModsByCategory);
@@ -659,7 +703,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     public async Task<Result> SubscribeProfileItemsAsync(IReadOnlyCollection<WorkshopId> ids, CancellationToken cancellationToken)
     {
         if (ids.Count == 0) return Result.Failure(new Error("workshop.selection_empty", "The profile has no missing Workshop items.", ErrorKind.Validation));
-        var result = await subscriptions.SubscribeAsync(ids, cancellationToken); await RefreshModsAsync(CancellationToken.None);
+        var result = await subscriptions.SubscribeAsync(ids, cancellationToken); await RefreshModsAndConfigurationsAsync(CancellationToken.None);
         await RefreshProfilesAsync(CancellationToken.None);
         Status = result.IsSuccess ? $"Subscribed to {result.Items.Count:N0} profile items" : $"Profile subscriptions: {result.Items.Count(item => item.Outcome.IsSuccess):N0} succeeded, {result.Items.Count(item => !item.Outcome.IsSuccess):N0} failed";
         return result.IsSuccess ? Result.Success() : Result.Failure(new Error("workshop.subscription_partial", Status, ErrorKind.ExternalService));
@@ -1002,7 +1046,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         try { result = await workshopOperations.DownloadUpdatesAsync(selected, WorkshopDownloadOptions.Default, forwarding, cancellationToken); }
         finally { ExitWorkshop(); }
         ApplyWorkshopOutcomes(result.Items);
-        await RefreshModsAsync(CancellationToken.None);
+        await RefreshModsAndConfigurationsAsync(CancellationToken.None);
         ApplyWorkshopOutcomes(result.Items);
         ProjectMods(modSearchText, groupModsByCategory);
         Status = DescribeWorkshopResult(result.ObservationCancelled ? "Stopped monitoring Workshop downloads; Steam may continue" : "Workshop downloads completed", result);
@@ -1016,7 +1060,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         WorkshopMutationResult result;
         try { result = await subscriptions.SubscribeAsync([id], cancellationToken); }
         finally { ExitWorkshop(); }
-        await RefreshModsAsync(CancellationToken.None);
+        await RefreshModsAndConfigurationsAsync(CancellationToken.None);
         await RefreshProfilesAsync(CancellationToken.None);
         var item = result.Items.Single();
         retainedWorkshopStatuses[id] = item.Subscribed
@@ -1038,7 +1082,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         finally { ExitWorkshop(); }
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value!.Settings;
-        await RefreshModsAsync(CancellationToken.None);
+        await RefreshModsAndConfigurationsAsync(CancellationToken.None);
         await RefreshProfilesAsync(CancellationToken.None);
         Status = result.Value.Mutations.IsSuccess ? "Unsubscribed and retained mod intent" : "Some Workshop unsubscribe operations failed";
         return result.Value.Mutations.IsSuccess ? Result.Success() : Result.Failure(new Error("workshop.unsubscribe_partial", Status, ErrorKind.ExternalService));
@@ -1059,7 +1103,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
         var deleted = await removalFilesystem.DeleteConfirmedAsync(preview, cancellationToken); if (!deleted.IsSuccess) return deleted;
         var removed = await modIntents.RemoveAsync(Settings, preview.Mod, cancellationToken); if (!removed.IsSuccess) return Result.Failure(removed.Error!);
-        Settings = removed.Value; await RefreshModsAsync(CancellationToken.None); await RefreshProfilesAsync(CancellationToken.None); Status = "Manual mod removed"; return Result.Success();
+        Settings = removed.Value; await RefreshModsAndConfigurationsAsync(CancellationToken.None); await RefreshProfilesAsync(CancellationToken.None); Status = "Manual mod removed"; return Result.Success();
     }
 
     public async Task<Result> RefreshConfigurationDocumentsAsync(CancellationToken cancellationToken)
@@ -1072,7 +1116,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         return Result.Success();
     }
 
-    private IReadOnlySet<ModKey> ActiveModKeys() => Settings?.ModIntents.Where(intent => intent.IsActive).Select(intent => intent.Mod).ToHashSet() ?? new HashSet<ModKey>();
+    private IReadOnlySet<ModKey> EffectiveActiveModKeys() => modDrafts.Values.Where(draft => draft.IsActive).Select(draft => draft.Mod).ToHashSet();
 
     private void ApplyConflicts(ModConflictReport report)
     {
@@ -1165,12 +1209,11 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     private async Task RefreshDependencyStatusesAsync(CancellationToken cancellationToken)
     {
-        var input = await uiDispatcher.InvokeAsync(() => Settings is null ? null : new DependencyStatusInput(Settings, discoveredMods.ToArray()), cancellationToken).ConfigureAwait(false);
+        var input = await uiDispatcher.InvokeAsync(() => Settings is null ? null : new DependencyStatusInput(Settings, discoveredMods.ToArray(), EffectiveActiveModKeys()), cancellationToken).ConfigureAwait(false);
         if (input is null) return;
         var statuses = new Dictionary<ModKey, DependencyStatus>();
         var installations = input.DiscoveredMods.ToDictionary(mod => mod.Key);
-        var activeIntents = input.Settings.ModIntents.Where(intent => intent.IsActive && installations.ContainsKey(intent.Mod)).ToArray();
-        var activeWorkshopMods = activeIntents.Select(intent => installations[intent.Mod]).Where(mod => mod.WorkshopId.HasValue).ToArray();
+        var activeWorkshopMods = input.ActiveMods.Where(installations.ContainsKey).Select(key => installations[key]).Where(mod => mod.WorkshopId.HasValue).ToArray();
         var activeIds = activeWorkshopMods.Select(mod => mod.WorkshopId!.Value).ToHashSet();
         if (activeIds.Count == 0)
         {
@@ -1178,8 +1221,9 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
             return;
         }
         var installedIds = input.DiscoveredMods.Where(mod => mod.WorkshopId.HasValue).Select(mod => mod.WorkshopId!.Value).ToHashSet();
-        var ignored = activeIntents.Where(intent => installations[intent.Mod].WorkshopId.HasValue)
-            .ToDictionary(intent => installations[intent.Mod].WorkshopId!.Value, intent => intent.IgnoredDependencies);
+        var intents = input.Settings.ModIntents.ToDictionary(intent => intent.Mod);
+        var ignored = activeWorkshopMods.ToDictionary(mod => mod.WorkshopId!.Value,
+            mod => intents.GetValueOrDefault(mod.Key)?.IgnoredDependencies ?? new HashSet<WorkshopId>());
         var result = await dependencies.EvaluateAsync(activeIds, installedIds, activeIds, ignored, cancellationToken);
         if (!result.IsSuccess) return;
         foreach (var mod in activeWorkshopMods)
@@ -1201,7 +1245,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     private sealed record ModDraftSaveCapture(ApplicationSettings Settings, long Revision, IReadOnlyList<ModIntentEdit> Drafts, IReadOnlyList<ModInstallation> DiscoveredMods, ModDuplicateReport DuplicateReport);
     private sealed record ModGridSaveCapture(ApplicationSettings Settings, long Revision, ModGridPreferences Preferences);
-    private sealed record DependencyStatusInput(ApplicationSettings Settings, IReadOnlyList<ModInstallation> DiscoveredMods);
+    private sealed record DependencyStatusInput(ApplicationSettings Settings, IReadOnlyList<ModInstallation> DiscoveredMods, IReadOnlySet<ModKey> ActiveMods);
 
     public void Dispose()
     {
@@ -1212,6 +1256,15 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 }
 
 public sealed record SessionProfile(ProfileId Id, string Name, GameVariant GameVariant, int ModCount);
+public sealed record SessionUpdateCheck(bool Manual, DateTimeOffset CheckedAt, UpdateChannelPreference Channel, UpdateCheckResult? Result, Error? Error)
+{
+    public string Details => Error is not null
+        ? $"Update check failed {CheckedAt.LocalDateTime:g}: {Error.Message}"
+        : Result is null
+            ? "No update check has run in this session."
+            : $"{(Manual ? "Manual" : "Startup")} {Channel} update check {CheckedAt.LocalDateTime:g}: {Result.Message}" +
+              (Result.Release is null ? string.Empty : $"\n{Result.Release.Name}\n{Result.Release.Notes}");
+}
 public sealed record SessionConflict(string Key, string Kind, string Subject, string ParticipantsText, IReadOnlyList<ModKey> Participants, IReadOnlyList<ModConflictFact> Facts);
 public sealed record SessionDependencyDetails(IReadOnlyList<SessionDependencyRelationship> Required, IReadOnlyList<SessionDependencyRelationship> Dependents);
 public sealed record SessionDependencyRelationship(WorkshopId Parent, WorkshopId WorkshopId, string Name, ModKey? Mod, string Status, bool IsIgnored, int Depth, IReadOnlyList<WorkshopId> Path)
@@ -1261,6 +1314,7 @@ public sealed class SessionModRow : ReactiveObject
     public string State { get; }
     public int? Count { get; }
     public bool IsExpanded { get; }
+    public string GroupToggleLabel => IsExpanded ? "Collapse group" : "Expand group";
     public bool RequiresWarOfTheChosen { get; }
     public PackageId? PackageId { get; }
     public WorkshopId? WorkshopId { get; }

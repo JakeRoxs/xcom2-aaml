@@ -68,6 +68,8 @@ public sealed class LinuxGameLaunchIntegrationTests
         var game = Path.Combine(root, "steamapps", "common", "XCOM 2");
         var variantRoot = variant == GameVariant.XCom2 ? game : Path.Combine(game, "XCom2-WarOfTheChosen");
         Directory.CreateDirectory(Path.Combine(variantRoot, "Binaries", "Win64"));
+        Directory.CreateDirectory(Path.Combine(root, "steamapps"));
+        File.WriteAllText(Path.Combine(root, "steamapps", "appmanifest_268500.acf"), "\"AppState\" { \"appid\" \"268500\" \"installdir\" \"XCOM 2\" }");
         File.WriteAllBytes(Path.Combine(variantRoot, "Binaries", "Win64", "XCom2.exe"), []);
         Directory.CreateDirectory(Path.Combine(root, "steamapps", "compatdata", "268500", "pfx", "drive_c", "users", "steamuser"));
         return (root, game);

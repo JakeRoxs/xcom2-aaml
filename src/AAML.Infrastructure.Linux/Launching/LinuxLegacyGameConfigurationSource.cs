@@ -10,6 +10,11 @@ namespace AAML.Infrastructure.Linux.Launching;
 public sealed class LinuxLegacyGameConfigurationSource : ILegacyGameConfigurationSource
 {
     private static Error Unsupported() => new("legacy_configuration.unsupported_platform", "Active-mod and override migration from game files is available on Windows only.", ErrorKind.Validation);
+    public LegacyGameConfigurationCapabilities Capabilities { get; } = new(false, true, false,
+        "On Linux, ModRootDirs can be read for qualified Vanilla and War of the Chosen Proton installations. Active-mod and obsolete-override migration from game files is Windows-only; portable snapshot migration remains available.");
+    public bool SupportsActiveMods(GameVariant variant) => false;
+    public bool SupportsModRoots(GameVariant variant) => GameModRootPolicy.SupportsLinuxProton(variant);
+    public bool SupportsOverrideCleanup(GameVariant variant) => false;
 
     public Task<Result<IReadOnlyList<ActiveModSource>>> ReadActiveModsAsync(GameVariant variant, string? installationLocation, CancellationToken cancellationToken) =>
         Task.FromResult(Result<IReadOnlyList<ActiveModSource>>.Failure(Unsupported()));

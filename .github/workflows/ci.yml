@@ -88,7 +88,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Package manifest is not tracked.' }
           git check-ignore '${{ matrix.manifest }}'
           if ($LASTEXITCODE -eq 0) { throw 'Package manifest is ignored.' }
-          git ls-files --error-unmatch eng/release-supply-chain-policy.json eng/generate-release-evidence.ps1 eng/test-release-evidence.ps1 eng/test-release-license-catalog.ps1 eng/license-sources eng/license-texts
+          git ls-files --error-unmatch eng/release-supply-chain-policy.json eng/generate-release-evidence.ps1 eng/test-release-evidence.ps1 eng/test-release-license-catalog.ps1 eng/test-aaml-package-policy.ps1 eng/license-sources eng/license-texts
           if ($LASTEXITCODE -ne 0) { throw 'Release supply-chain policy inputs are not tracked.' }
       - run: dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
       - if: matrix.rid == 'linux-x64'
@@ -112,6 +112,10 @@ jobs:
       - shell: pwsh
         run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Package/${{ matrix.rid }}' -ManifestPath '${{ matrix.manifest }}' -GenerateChecksums
       - if: matrix.rid == 'linux-x64'
+        name: Test consolidated Linux package policy
+        shell: pwsh
+        run: ./eng/test-aaml-package-policy.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Package/linux-x64' -ManifestPath '${{ matrix.manifest }}'
+      - if: matrix.rid == 'linux-x64'
         name: Smoke consolidated Linux helper modes
         shell: bash
         working-directory: ${{ runner.temp }}/AAML Package/linux-x64
@@ -127,6 +131,7 @@ jobs:
           test "$probe_code" -eq 2
           grep -q 'initialize/subscriptions' <<< "$probe_output"
           grep -q 'libsteam_api.so' <<< "$probe_output"
+          bash '${{ github.workspace }}/eng/linux/run-proton-wrapper-tests.sh' '${{ runner.temp }}/AAML Package/linux-x64/tools/proton-wrapper'
       - if: matrix.rid == 'linux-x64'
         shell: bash
         run: tar -C '${{ runner.temp }}/AAML Package' -czf '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-linux-x64.tar.gz' linux-x64

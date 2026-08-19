@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 
 $workflowPath = Join-Path (Split-Path -Parent $PSScriptRoot) '.github/workflows/release.yml'
 $workflow = Get-Content -LiteralPath $workflowPath -Raw
+$desktopWorkflow = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) '.github/workflows/desktop-smoke.yml') -Raw
 $validator = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'validate-aaml-artifact.ps1') -Raw
 $policy = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release-supply-chain-policy.json') -Raw
 
@@ -34,6 +35,21 @@ Assert-Match $workflow "tar -C '\$\{\{ runner\.temp \}\}/AAML Stage' -xzf '\$\{\
 Assert-Match $policy '"requiredForPublicRelease"\s*:\s*false' 'Windows signing policy must explicitly permit unsigned public releases.'
 Assert-Match $policy '"status"\s*:\s*"not-required"' 'Windows signing policy must be not-required.'
 Assert-NotMatch $validator 'Get-AuthenticodeSignature' 'Official validation must not require Authenticode.'
+Assert-Match $workflow 'subject-path:\s*\$\{\{ runner\.temp \}\}/AAML-\$\{\{ needs\.provenance\.outputs\.version \}\}-win-x64\.zip' 'Windows attestation must cover the exact final ZIP.'
+Assert-Match $workflow 'AAML-\$\{\{ needs\.provenance\.outputs\.version \}\}-win-x64\.zip\.sha256' 'Windows finalizer must upload the archive sidecar.'
+Assert-Match $workflow 'gh release create.*release-assets/\*' 'Release publication must include downloaded archives and checksum sidecars.'
+Assert-Match $desktopWorkflow 'source_run_id:' 'Desktop smoke must identify the finalizer run.'
+Assert-Match $desktopWorkflow 'assert-exact-artifact\.ps1' 'Desktop smoke must verify and extract an exact finalized archive.'
+Assert-Match $desktopWorkflow 'test-windows-readonly-install\.ps1' 'Desktop smoke must exercise the exact archive from a read-only Unicode installation.'
+Assert-NotMatch $desktopWorkflow 'stage-aaml-package\.ps1|dotnet restore|setup-dotnet' 'Desktop smoke must not rebuild the artifact it qualifies.'
+Assert-Match $desktopWorkflow 'run\.path -ne ''\.github/workflows/release\.yml''.*run\.conclusion -ne ''success''' 'Desktop smoke must bind to a successful canonical release run.'
+Assert-Match $desktopWorkflow 'run\.head_sha.*GITHUB_ENV' 'Desktop smoke must derive checkout identity from the release run.'
+Assert-Match $desktopWorkflow 'compare/\$\(\$repository\.default_branch\)\.\.\.\$\(\$run\.head_sha\)' 'Desktop smoke must prove the release head belongs to the protected default branch.'
+Assert-Match $desktopWorkflow 'ref:\s*\$\{\{ env\.RELEASE_HEAD_SHA \}\}' 'Desktop smoke must execute trusted scripts from the release head SHA.'
+Assert-Match $desktopWorkflow 'GetFileName\(\$env:ARCHIVE_NAME\).*expected leaf filename' 'Desktop smoke must reject archive traversal and unexpected names.'
+Assert-Match $desktopWorkflow 'Finalizer artifact has no archive SHA-256 sidecar' 'Desktop smoke must derive expected archive identity from the finalizer sidecar.'
+Assert-Match $desktopWorkflow 'gh attestation verify.*--signer-workflow.*release\.yml.*--source-digest' 'Desktop smoke must bind attestation to the release workflow and release commit.'
+Assert-NotMatch $desktopWorkflow "-Expected(?:ArchiveSha256|Commit|Version) '\$\{\{ inputs\." 'Dispatch inputs must not be interpolated directly into PowerShell source.'
 
 $checksumIndex = $workflow.IndexOf('-GenerateChecksums -OfficialRelease', [StringComparison]::Ordinal)
 $archiveIndex = $workflow.IndexOf('Compress-Archive', $checksumIndex, [StringComparison]::Ordinal)

@@ -54,6 +54,6 @@ public sealed class ExistingModRootAdoptionService(ILegacyGameConfigurationSourc
 
         var comparison = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         var roots = settings.ModRootLocations.Concat(selected.Select(row => row.ResolvedPath!)).Distinct(comparison).ToArray();
-        return await settingsBootstrapper.SavePreferencesAsync(settings, settings.LaunchArguments, roots, settings.AllowLaunchWithMissingDependencies, settings.CloseAfterLaunch, settings.WorkshopStartupRefresh, settings.Theme, settings.AllowMultipleInstances, settings.CheckForUpdates, settings.UpdateChannel, cancellationToken).ConfigureAwait(false);
+        return await settingsBootstrapper.SavePreferencesAsync(settings, settings.LaunchArguments, roots, settings.AllowLaunchWithMissingDependencies, settings.CloseAfterLaunch, settings.WorkshopStartupRefresh, settings.Theme, settings.AllowMultipleInstances, settings.CheckForUpdates, settings.UpdateChannel, settings.TextScale, settings.IconScale, cancellationToken).ConfigureAwait(false);
     }
 }

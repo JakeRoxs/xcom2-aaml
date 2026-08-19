@@ -3,6 +3,8 @@ using AAML.Application.Ports;
 using AAML.Domain.Games;
 using AAML.Domain.Launching;
 using AAML.Infrastructure.Common.Configurations;
+using AAML.Infrastructure.Common.Steam;
+using AAML.Infrastructure.Linux.Paths;
 
 namespace AAML.Infrastructure.Linux.Launching;
 
@@ -48,7 +50,7 @@ public sealed class LinuxGameConfigurationWriter(IAtomicTextWriter writer) : IGa
     }
 }
 
-internal sealed record LinuxSteamGameLayout(string GameInstallPath, string TargetExecutablePath, string SteamAppsPath, string PrefixPath, string WineUser, string ConfigurationDirectory)
+internal sealed record LinuxSteamGameLayout(string GameInstallPath, string TargetExecutablePath, string SteamAppsPath, string PrefixPath, string WineUser, string UserDataDirectory, string ConfigurationDirectory)
 {
     public static Result<LinuxSteamGameLayout> Resolve(string gameInstallPath, GameVariant variant)
     {
@@ -61,6 +63,19 @@ internal sealed record LinuxSteamGameLayout(string GameInstallPath, string Targe
             if (common is null || steamApps is null || !common.Name.Equals("common", StringComparison.Ordinal) || !steamApps.Name.Equals("steamapps", StringComparison.Ordinal))
                 return Failure("launch.steam_layout_invalid", "The game installation is not beneath a Steam steamapps/common directory.", ErrorKind.Validation);
             var appId = AAML.Domain.Games.GameVariantPolicy.GetSteamAppId(variant).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var manifest = Path.Combine(steamApps.FullName, $"appmanifest_{appId}.acf");
+            if (!File.Exists(manifest)) return Failure("launch.steam_manifest_missing", "The selected Steam library has no matching application manifest.", ErrorKind.NotFound);
+            var fields = ValveKeyValueParser.Parse(File.ReadAllText(manifest)).SelectMany(entry => entry.Children)
+                .Where(entry => entry.Value is not null).GroupBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last().Value!, StringComparer.OrdinalIgnoreCase);
+            if (fields.GetValueOrDefault("appid") != appId || fields.GetValueOrDefault("installdir") is not { } installDirectory ||
+                string.IsNullOrWhiteSpace(installDirectory) || Path.IsPathRooted(installDirectory) || installDirectory.Contains("..", StringComparison.Ordinal))
+                return Failure("launch.steam_manifest_invalid", "The Steam application manifest does not identify a safe matching installation.", ErrorKind.InvalidData);
+            var physical = new LinuxPhysicalPathResolver();
+            var selectedPhysical = physical.ResolveExisting(game);
+            var manifestPhysical = physical.ResolveExisting(Path.Combine(common.FullName, installDirectory));
+            if (!selectedPhysical.IsSuccess || !manifestPhysical.IsSuccess || !string.Equals(selectedPhysical.Value, manifestPhysical.Value, StringComparison.Ordinal))
+                return Failure("launch.steam_manifest_mismatch", "The selected installation does not physically match the Steam application manifest.", ErrorKind.Conflict);
             var prefix = Path.Combine(steamApps.FullName, "compatdata", appId, "pfx");
             var users = Path.Combine(prefix, "drive_c", "users");
             if (!Directory.Exists(users)) return Failure("launch.proton_prefix_missing", "The Proton prefix has no Windows users directory.", ErrorKind.NotFound);
@@ -71,8 +86,13 @@ internal sealed record LinuxSteamGameLayout(string GameInstallPath, string Targe
             var target = Path.Combine(variantRoot, "Binaries", "Win64", "XCom2.exe");
             if (!File.Exists(target)) return Failure("launch.executable_missing", $"The selected game executable does not exist: {target}", ErrorKind.NotFound);
             var gameFolder = variant == GameVariant.XCom2 ? "XCOM2" : "XCOM2 War of the Chosen";
-            var config = Path.Combine(users, wineUser, "Documents", "My Games", gameFolder, "XComGame", "Config");
-            return Result<LinuxSteamGameLayout>.Success(new LinuxSteamGameLayout(game, target, steamApps.FullName, prefix, wineUser, config));
+            var userData = Path.Combine(users, wineUser, "Documents", "My Games", gameFolder);
+            var config = Path.Combine(userData, "XComGame", "Config");
+            return Result<LinuxSteamGameLayout>.Success(new LinuxSteamGameLayout(game, target, steamApps.FullName, prefix, wineUser, userData, config));
+        }
+        catch (FormatException exception)
+        {
+            return Failure("launch.steam_manifest_invalid", $"The Steam application manifest is malformed: {exception.Message}", ErrorKind.InvalidData);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {

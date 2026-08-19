@@ -108,7 +108,9 @@ internal sealed record CurrentSettingsDocument(
     [property: JsonProperty("checkForUpdates")] bool CheckForUpdates,
     [property: JsonProperty("updateChannel")] string UpdateChannel,
     [property: JsonProperty("navigationRailMode")] string NavigationRailMode,
-    [property: JsonProperty("autoSaveChanges", Required = Required.Always)] bool AutoSaveChanges);
+    [property: JsonProperty("autoSaveChanges", Required = Required.Always)] bool AutoSaveChanges,
+    [property: JsonProperty("textScale", Required = Required.Always)] decimal TextScale,
+    [property: JsonProperty("iconScale", Required = Required.Always)] decimal IconScale);
 
 internal sealed record DuplicatePreferenceDocument(string PackageId, string Source, string LocationIdentity);
 

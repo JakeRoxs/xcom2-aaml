@@ -13,6 +13,8 @@ public sealed class ModCleanupViewModel : ReactiveObject, IDisposable
     private readonly IModCleanupService cleanup;
     private ModCleanupPreview? preview;
     private CancellationTokenSource? operation;
+    private CancellationTokenSource? previewExpiry;
+    private long previewRevision;
     private SourceCleanupPolicy sourcePolicy = SourceCleanupPolicy.XComGameOnly;
     private ShaderCleanupPolicy shaderPolicy = ShaderCleanupPolicy.EmptyLegacyCacheOnly;
     private bool includeWorkshop;
@@ -21,9 +23,10 @@ public sealed class ModCleanupViewModel : ReactiveObject, IDisposable
     public ModCleanupViewModel(ApplicationSession session, IModCleanupService cleanup)
     {
         this.session = session; this.cleanup = cleanup;
+        session.PropertyChanged += OnSessionPropertyChanged;
         Preview = ReactiveCommand.CreateFromTask(PreviewAsync).Enhance(text: "Preview cleanup", name: "PreviewModCleanup");
         Confirm = ReactiveCommand.CreateFromTask(ConfirmAsync).Enhance(text: "Confirm cleanup", name: "ConfirmModCleanup");
-        Cancel = ReactiveCommand.Create(() => { operation?.Cancel(); return Result.Success(); }).Enhance(text: "Cancel cleanup", name: "CancelModCleanup");
+        Cancel = ReactiveCommand.Create(() => { operation?.Cancel(); Invalidate("Cleanup cancelled. Preview again before confirmation."); return Result.Success(); }).Enhance(text: "Cancel cleanup", name: "CancelModCleanup");
     }
     public IReadOnlyList<SourceCleanupPolicy> SourcePolicies { get; } = Enum.GetValues<SourceCleanupPolicy>();
     public IReadOnlyList<ShaderCleanupPolicy> ShaderPolicies { get; } = Enum.GetValues<ShaderCleanupPolicy>();
@@ -31,26 +34,64 @@ public sealed class ModCleanupViewModel : ReactiveObject, IDisposable
     public ShaderCleanupPolicy ShaderPolicy { get => shaderPolicy; set { this.RaiseAndSetIfChanged(ref shaderPolicy, value); Invalidate(); } }
     public bool IncludeWorkshop { get => includeWorkshop; set { this.RaiseAndSetIfChanged(ref includeWorkshop, value); Invalidate(); } }
     public string Report { get => report; private set => this.RaiseAndSetIfChanged(ref report, value); }
+    public bool CanConfirm => preview is not null && preview.ExpiresAt > DateTimeOffset.UtcNow;
     public IEnhancedCommand<Result> Preview { get; } public IEnhancedCommand<Result> Confirm { get; } public IEnhancedCommand<Result> Cancel { get; }
 
     private async Task<Result> PreviewAsync()
     {
+        Invalidate("Preparing cleanup preview...");
         if (session.Settings is null) return Result.Failure("AAML is not initialized.");
         operation?.Dispose(); operation = new CancellationTokenSource();
-        var result = await cleanup.PreviewAsync(new(session.DiscoveredMods, SourcePolicy, ShaderPolicy, IncludeWorkshop, session.Settings.ModRootLocations), operation.Token);
+        var revision = previewRevision;
+        var cancellationToken = operation.Token;
+        AAML.Application.Common.Result<ModCleanupPreview> result;
+        try { result = await cleanup.PreviewAsync(new(session.DiscoveredMods, SourcePolicy, ShaderPolicy, IncludeWorkshop, session.Settings.ModRootLocations), cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Result.Failure("Cleanup inputs changed while previewing. Preview again."); }
+        if (revision != previewRevision) return Result.Failure("Cleanup inputs changed while previewing. Preview again.");
         if (!result.IsSuccess) return Result.Failure(result.Error!.Message);
-        preview = result.Value; Report = Format(preview!); return Result.Success();
+        preview = result.Value!; this.RaisePropertyChanged(nameof(CanConfirm)); Report = Format(preview); ScheduleExpiry(preview); return Result.Success();
     }
     private async Task<Result> ConfirmAsync()
     {
         if (preview is null) return Result.Failure("Preview cleanup before confirming.");
         operation?.Dispose(); operation = new CancellationTokenSource();
-        var result = await cleanup.ExecuteAsync(preview, operation.Token); preview = null;
+        var current = preview;
+        ClearPreview();
+        var result = await cleanup.ExecuteAsync(current, operation.Token);
         if (!result.IsSuccess) return Result.Failure(result.Error!.Message);
         Report = string.Join(Environment.NewLine, result.Value!.Items.Select(item => $"{item.Outcome}: {item.Message}"));
-        await session.RefreshModsAsync(CancellationToken.None); return Result.Success();
+        await session.RefreshModsAndConfigurationsAsync(CancellationToken.None); return Result.Success();
     }
-    private void Invalidate() { preview = null; Report = "Policies changed. Preview again before confirmation."; }
+    private void Invalidate() => Invalidate("Policies changed. Preview again before confirmation.");
+    private void Invalidate(string message) { previewRevision++; operation?.Cancel(); ClearPreview(); Report = message; }
+    private void ClearPreview()
+    {
+        preview = null;
+        previewExpiry?.Cancel();
+        previewExpiry?.Dispose();
+        previewExpiry = null;
+        this.RaisePropertyChanged(nameof(CanConfirm));
+    }
+    private void ScheduleExpiry(ModCleanupPreview current)
+    {
+        previewExpiry = new CancellationTokenSource();
+        _ = ExpirePreviewAsync(current, previewExpiry.Token);
+    }
+    private async Task ExpirePreviewAsync(ModCleanupPreview current, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var delay = current.ExpiresAt - DateTimeOffset.UtcNow;
+            if (delay > TimeSpan.Zero) await Task.Delay(delay, cancellationToken);
+            if (ReferenceEquals(preview, current)) Invalidate("Cleanup preview expired. Preview again before confirmation.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+    private void OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(ApplicationSession.Settings) or nameof(ApplicationSession.DiscoveredMods))
+            Invalidate("Cleanup inputs changed. Preview again before confirmation.");
+    }
     private static string Format(ModCleanupPreview preview) => $"Cleanup preview expires {preview.ExpiresAt.LocalDateTime:g}\nReady: {preview.Items.Count(item => item.Disposition == CleanupDisposition.Ready)}, skipped/rejected: {preview.Items.Count(item => item.Disposition != CleanupDisposition.Ready)}\nFiles: {preview.Items.Sum(item => item.FileCount)}, directories: {preview.Items.Sum(item => item.DirectoryCount)}, bytes: {preview.Items.Sum(item => item.TotalBytes):N0}\n" + string.Join('\n', preview.Items.Select(item => $"{item.ModName} | {item.Kind} | {item.RelativePath} | {item.Disposition} | {item.Message}"));
-    public void Dispose() { operation?.Cancel(); operation?.Dispose(); }
+    public void Dispose() { session.PropertyChanged -= OnSessionPropertyChanged; operation?.Cancel(); operation?.Dispose(); ClearPreview(); }
 }

@@ -17,6 +17,7 @@ using AAML.Application.Configurations;
 using AAML.Application.Profiles;
 using AAML.Application.Ports;
 using AAML.Application.Startup;
+using AAML.Application.Settings;
 using AAML.Infrastructure.Common.Logging;
 using AAML.Infrastructure.Common.Mods;
 using AAML.Infrastructure.Common.Profiles;
@@ -95,6 +96,9 @@ public sealed partial class App : global::Avalonia.Application
             var shell = provider.GetRequiredService<IHierarchicalShell>();
             var session = provider.GetRequiredService<ApplicationSession>();
             var startupSettings = ShellStartupSettings.LoadAsync(provider.GetRequiredService<ISettingsRepository>(), CancellationToken.None).GetAwaiter().GetResult();
+            var ui = provider.GetRequiredService<IApplicationUiController>();
+            ui.ApplyTheme(startupSettings?.Theme ?? ThemePreference.System);
+            ui.ApplyAccessibilitySizing(startupSettings?.TextScale ?? ApplicationSettingsDefaults.DefaultTextScale, startupSettings?.IconScale ?? ApplicationSettingsDefaults.DefaultIconScale);
             if (startupSettings is not null) session.PrimeSettings(startupSettings);
             // A failed or missing preflight load is retried once by full initialization after the Expanded shell is visible.
             var shellView = new AamlShellView(startupSettings?.NavigationRailMode ?? AAML.Application.Settings.NavigationRailMode.Expanded) { DataContext = shell };
@@ -115,7 +119,8 @@ public sealed partial class App : global::Avalonia.Application
                 var initialized = await session.InitializeAsync(CancellationToken.None);
                 if (!initialized.IsSuccess) return;
                 shellView.Configure(session);
-                provider.GetRequiredService<IApplicationUiController>().ApplyTheme(session.Settings!.Theme);
+                ui.ApplyTheme(session.Settings!.Theme);
+                ui.ApplyAccessibilitySizing(session.Settings.TextScale, session.Settings.IconScale);
                 if (!session.Settings.AllowMultipleInstances)
                 {
                     singleInstanceMutex = new Mutex(true, "AAML.Avalonia.SingleInstance", out var created);
@@ -174,6 +179,7 @@ public sealed partial class App : global::Avalonia.Application
             services.AddSingleton<IProcessRunner, WindowsProcessRunner>();
             services.AddSingleton<IExternalLauncher, WindowsExternalLauncher>();
             services.AddSingleton<IGameLogLocator, WindowsGameLogLocator>();
+            services.AddSingleton<IGameUserDataLocator, WindowsGameUserDataLocator>();
             services.AddSingleton<IGameConfigurationWriter, WindowsGameConfigurationWriter>();
             services.AddSingleton<ILegacyGameConfigurationSource, WindowsLegacyGameConfigurationSource>();
             services.AddSingleton<IGameLauncher, WindowsGameLauncher>();
@@ -204,6 +210,7 @@ public sealed partial class App : global::Avalonia.Application
             services.AddSingleton<ILegacyGameConfigurationSource, LinuxLegacyGameConfigurationSource>();
             services.AddSingleton<IExternalLauncher, LinuxExternalLauncher>();
             services.AddSingleton<IGameLogLocator, UnavailableGameLogLocator>();
+            services.AddSingleton<IGameUserDataLocator, LinuxGameUserDataLocator>();
             services.AddSingleton<IGameLauncher>(_ => new LinuxSteamGameLauncher(requestStore));
 #else
             throw new PlatformNotSupportedException("AAML currently supports Windows and native Linux.");

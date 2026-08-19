@@ -28,6 +28,8 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
     private bool checkForUpdates = true;
     private UpdateChannelPreference updateChannel;
     private bool autoSaveChanges;
+    private decimal textScale = ApplicationSettingsDefaults.DefaultTextScale;
+    private decimal iconScale = ApplicationSettingsDefaults.DefaultIconScale;
     private bool preferencesLoaded;
     private bool preferencesDirty;
     private long preferencesRevision;
@@ -47,6 +49,7 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
         DetectSteam = ReactiveCommand.CreateFromTask(async () => (await session.DetectSteamAsync(CancellationToken.None)).IsSuccess ? Result.Success() : Result.Failure(session.Status)).Enhance(text: "Detect Steam", name: "DetectSteam");
         SavePreferences = ReactiveCommand.CreateFromTask(SavePreferencesAsync).Enhance(text: "Save preferences", name: "SavePreferences");
         DiscardPreferences = ReactiveCommand.CreateFromTask(DiscardPreferencesAsync).Enhance(text: "Discard edits", name: "DiscardPreferences");
+        ResetAccessibilitySizing = ReactiveCommand.Create(ResetAccessibilitySizingDraft).Enhance(text: "Reset text and icon sizes", name: "ResetAccessibilitySizing");
         ApplyConfiguration = ReactiveCommand.CreateFromTask(async () => (await session.ApplyConfigurationAsync(CancellationToken.None)).IsSuccess ? Result.Success() : Result.Failure(session.Status)).Enhance(text: "Apply configuration", name: "ApplyConfiguration");
         Launch = ReactiveCommand.CreateFromTask(async () => { var result = await session.LaunchAsync(CancellationToken.None); if (result.IsSuccess && session.Settings?.CloseAfterLaunch == true) ui.Shutdown(); return result.IsSuccess ? Result.Success() : Result.Failure(session.Status); }).Enhance(text: "Launch game", name: "LaunchGame");
         SetPresets(presetService.BuiltIns);
@@ -59,6 +62,7 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
     public IEnhancedCommand<Result> Launch { get; }
     public IEnhancedCommand<Result> SavePreferences { get; }
     public IEnhancedCommand<Result> DiscardPreferences { get; }
+    public IEnhancedCommand<Result> ResetAccessibilitySizing { get; }
     public IEnhancedCommand<Result> ApplyConfiguration { get; }
     public string Status => session.Status;
     public string Origin => session.Origin?.ToString() ?? "Not loaded";
@@ -76,6 +80,30 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
     public bool CheckForUpdates { get => checkForUpdates; set { if (checkForUpdates == value) return; this.RaiseAndSetIfChanged(ref checkForUpdates, value); MarkPreferencesDirty(); } }
     public UpdateChannelPreference UpdateChannel { get => updateChannel; set { if (updateChannel == value) return; this.RaiseAndSetIfChanged(ref updateChannel, value); MarkPreferencesDirty(); } }
     public IReadOnlyList<UpdateChannelPreference> UpdateChannelOptions { get; } = Enum.GetValues<UpdateChannelPreference>();
+    public decimal TextScale
+    {
+        get => textScale;
+        set
+        {
+            value = Math.Clamp(value, ApplicationSettingsDefaults.MinimumTextScale, ApplicationSettingsDefaults.MaximumTextScale);
+            if (textScale == value) return;
+            this.RaiseAndSetIfChanged(ref textScale, value);
+            ui.ApplyAccessibilitySizing(textScale, iconScale);
+            MarkPreferencesDirty();
+        }
+    }
+    public decimal IconScale
+    {
+        get => iconScale;
+        set
+        {
+            value = Math.Clamp(value, ApplicationSettingsDefaults.MinimumIconScale, ApplicationSettingsDefaults.MaximumIconScale);
+            if (iconScale == value) return;
+            this.RaiseAndSetIfChanged(ref iconScale, value);
+            ui.ApplyAccessibilitySizing(textScale, iconScale);
+            MarkPreferencesDirty();
+        }
+    }
     public IReadOnlyList<LaunchArgumentPresetOptionViewModel> LaunchArgumentPresets { get; private set; } = [];
     public string PresetDiagnostics { get; private set; } = string.Empty;
     public bool AutoSaveChanges
@@ -158,7 +186,7 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
             var startupRefresh = WorkshopStartupRefresh;
             var selectedTheme = Theme;
             var multipleInstances = AllowMultipleInstances;
-            var result = await session.SavePreferencesAsync(arguments, roots, allowMissing, closeAfter, startupRefresh, selectedTheme, multipleInstances, CheckForUpdates, UpdateChannel, cancellationToken);
+            var result = await session.SavePreferencesAsync(arguments, roots, allowMissing, closeAfter, startupRefresh, selectedTheme, multipleInstances, CheckForUpdates, UpdateChannel, TextScale, IconScale, cancellationToken);
             if (result.IsSuccess && revision == preferencesRevision) preferencesDirty = false;
             return result;
         }
@@ -173,9 +201,10 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
         session.NotifyAutoSaveOwnerChanged(AutoSaveOwner);
     }
 
-    private void LoadPreferencesDraft()
+    private void LoadPreferencesDraft(ApplicationSettings? persistedSettings = null)
     {
-        if (session.Settings is not { } settings) return;
+        var settings = persistedSettings ?? session.Settings;
+        if (settings is null) return;
         preferencesLoaded = false;
         selectedGame = settings.SelectedGame;
         gameInstallationPath = settings.GameInstallationLocation ?? string.Empty;
@@ -189,9 +218,11 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
         checkForUpdates = settings.CheckForUpdates;
         updateChannel = settings.UpdateChannel;
         autoSaveChanges = settings.AutoSaveChanges;
+        textScale = settings.TextScale;
+        iconScale = settings.IconScale;
         preferencesDirty = false;
         preferencesLoaded = true;
-        foreach (var property in new[] { nameof(SelectedGame), nameof(GameInstallationPath), nameof(AllowLaunchWithMissingDependencies), nameof(LaunchArguments), nameof(ModRoots), nameof(CloseAfterLaunch), nameof(WorkshopStartupRefresh), nameof(Theme), nameof(AllowMultipleInstances), nameof(CheckForUpdates), nameof(UpdateChannel), nameof(AutoSaveChanges) }) this.RaisePropertyChanged(property);
+        foreach (var property in new[] { nameof(SelectedGame), nameof(GameInstallationPath), nameof(AllowLaunchWithMissingDependencies), nameof(LaunchArguments), nameof(ModRoots), nameof(CloseAfterLaunch), nameof(WorkshopStartupRefresh), nameof(Theme), nameof(AllowMultipleInstances), nameof(CheckForUpdates), nameof(UpdateChannel), nameof(AutoSaveChanges), nameof(TextScale), nameof(IconScale) }) this.RaisePropertyChanged(property);
         RefreshPresets();
     }
 
@@ -209,12 +240,24 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
 
     private async Task<Result> DiscardPreferencesAsync()
     {
-        session.CancelAutoSaveOwner(AutoSaveOwner);
-        var loaded = await session.ReloadSettingsAsync(CancellationToken.None);
+        await session.CancelAutoSaveOwnerAndWaitAsync(AutoSaveOwner, CancellationToken.None);
+        var loaded = await session.ReadPersistedSettingsAsync(CancellationToken.None);
         if (!loaded.IsSuccess) return Result.Failure(session.Status);
-        preferencesLoaded = false;
-        LoadPreferencesDraft();
+        LoadPreferencesDraft(loaded.Value);
         ui.ApplyTheme(theme);
+        ui.ApplyAccessibilitySizing(textScale, iconScale);
+        return Result.Success();
+    }
+
+    private Result ResetAccessibilitySizingDraft()
+    {
+        if (textScale == ApplicationSettingsDefaults.DefaultTextScale && iconScale == ApplicationSettingsDefaults.DefaultIconScale) return Result.Success();
+        textScale = ApplicationSettingsDefaults.DefaultTextScale;
+        iconScale = ApplicationSettingsDefaults.DefaultIconScale;
+        this.RaisePropertyChanged(nameof(TextScale));
+        this.RaisePropertyChanged(nameof(IconScale));
+        ui.ApplyAccessibilitySizing(textScale, iconScale);
+        MarkPreferencesDirty();
         return Result.Success();
     }
 

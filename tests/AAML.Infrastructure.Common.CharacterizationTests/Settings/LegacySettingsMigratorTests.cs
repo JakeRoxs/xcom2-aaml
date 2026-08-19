@@ -222,7 +222,7 @@ public sealed class LegacySettingsMigratorTests
             (await File.ReadAllTextAsync(legacyPath, TestContext.CancellationToken)).Should().Be(legacy);
             var modern = await File.ReadAllTextAsync(Path.Combine(paths.ConfigurationDirectory, "settings.json"), TestContext.CancellationToken);
             modern.Should().NotContain("Windows").And.NotContain("Collapsed").And.NotContain("PreviousState").And.NotContain("SteamTags").And.NotContain("Settings\"");
-            modern.Should().Contain("\"schemaVersion\": 9").And.Contain("\"theme\": \"Light\"").And.Contain("\"workshopStartupRefresh\": \"AllMods\"");
+            modern.Should().Contain("\"schemaVersion\": 10").And.Contain("\"theme\": \"Light\"").And.Contain("\"workshopStartupRefresh\": \"AllMods\"").And.Contain("\"textScale\": 1.00").And.Contain("\"iconScale\": 1.00");
             File.Exists(reportPath).Should().BeTrue();
             var report = await File.ReadAllTextAsync(reportPath, TestContext.CancellationToken);
             report.Should().Contain("\"schemaVersion\": 1").And.Contain("\"sourcePreserved\": true").And.Contain("\"quickToggleArguments\"");

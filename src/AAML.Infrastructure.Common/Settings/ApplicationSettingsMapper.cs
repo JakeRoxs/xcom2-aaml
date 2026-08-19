@@ -41,7 +41,9 @@ internal static class ApplicationSettingsMapper
             settings.CheckForUpdates,
             RequireDefined(settings.UpdateChannel).ToString(),
             RequireDefined(settings.NavigationRailMode).ToString(),
-            settings.AutoSaveChanges);
+            settings.AutoSaveChanges,
+            RequireTextScale(settings.TextScale),
+            RequireIconScale(settings.IconScale));
     }
 
     public static ApplicationSettings FromCurrentDocument(CurrentSettingsDocument document)
@@ -53,7 +55,7 @@ internal static class ApplicationSettingsMapper
             document.DuplicatePreferences is null || document.ModGrid is null || document.RetainedWorkshopItems is null ||
             document.ModGrid.IncludeHidden is null || document.ModGrid.GroupByCategory is null || document.ModGrid.CollapsedGroups is null)
         {
-            throw new InvalidDataException("Schema 9 collection and modGrid members must be non-null.");
+            throw new InvalidDataException("Schema 10 collection and modGrid members must be non-null.");
         }
 
         var game = ParseNamed<GameVariant>(document.SelectedGame, "selectedGame");
@@ -61,7 +63,7 @@ internal static class ApplicationSettingsMapper
         if (!locations.TryGetValue(game, out var selectedLocation) ||
             !LocationsEqual(selectedLocation, document.GameInstallationLocation, document.ModRootLocations))
         {
-            throw new InvalidDataException("Schema 9 selected scalar locations contradict gameLocations.");
+            throw new InvalidDataException("Schema 10 selected scalar locations contradict gameLocations.");
         }
 
         return Create(
@@ -72,7 +74,8 @@ internal static class ApplicationSettingsMapper
             ParseNamed<ThemePreference>(document.Theme, "theme"), document.AllowMultipleInstances,
             document.DuplicatePreferences, ParseGrid(document.ModGrid), document.RetainedWorkshopItems,
             document.CheckForUpdates, ParseNamed<UpdateChannelPreference>(document.UpdateChannel, "updateChannel"),
-            ParseNamed<NavigationRailMode>(document.NavigationRailMode, "navigationRailMode"), document.AutoSaveChanges);
+            ParseNamed<NavigationRailMode>(document.NavigationRailMode, "navigationRailMode"), document.AutoSaveChanges,
+            RequireTextScale(document.TextScale), RequireIconScale(document.IconScale));
     }
 
     public static ApplicationSettings FromMigratedDocument(SettingsMigrationState state)
@@ -87,11 +90,12 @@ internal static class ApplicationSettingsMapper
         return Create(
             game, state.GameInstallationLocation, state.ModRootLocations ?? [], arguments,
             state.ModIntents ?? [], state.Categories ?? [], state.Tags ?? [], state.AllowLaunchWithMissingDependencies,
-            locations, state.CloseAfterLaunch, ParseWorkshop(state.WorkshopStartupRefresh, compatibility: true),
+            locations, state.CloseAfterLaunch, ParseWorkshop(state.WorkshopStartupRefresh, compatibility: state.SourceSchemaVersion < 7),
             ParseOptionalNamed(state.Theme, ThemePreference.System, "theme"), state.AllowMultipleInstances,
             state.DuplicatePreferences ?? [], ParseGrid(state.ModGrid), state.RetainedWorkshopItems ?? [],
             state.CheckForUpdates ?? true, ParseOptionalNamed(state.UpdateChannel, UpdateChannelPreference.Stable, "updateChannel"),
-            ParseOptionalNamed(state.NavigationRailMode, NavigationRailMode.Expanded, "navigationRailMode"), state.AutoSaveChanges);
+            ParseOptionalNamed(state.NavigationRailMode, NavigationRailMode.Expanded, "navigationRailMode"), state.AutoSaveChanges,
+            state.TextScale, state.IconScale);
     }
 
     private static ApplicationSettings Create(
@@ -101,7 +105,7 @@ internal static class ApplicationSettingsMapper
         WorkshopStartupRefreshPolicy workshop, ThemePreference theme, bool allowMultiple,
         IReadOnlyList<DuplicatePreferenceDocument> duplicates, ModGridPreferences grid,
         IReadOnlyList<RetainedWorkshopDocument> retained, bool checkForUpdates, UpdateChannelPreference updateChannel,
-         NavigationRailMode navigationRailMode, bool autoSaveChanges) => new(
+         NavigationRailMode navigationRailMode, bool autoSaveChanges, decimal textScale, decimal iconScale) => new(
             ApplicationSettingsDefaults.CurrentSchemaVersion,
             game,
             gameLocation,
@@ -127,7 +131,17 @@ internal static class ApplicationSettingsMapper
             checkForUpdates,
             updateChannel,
             navigationRailMode,
-            autoSaveChanges);
+            autoSaveChanges,
+            RequireTextScale(textScale),
+            RequireIconScale(iconScale));
+
+    private static decimal RequireTextScale(decimal value) => ApplicationSettingsDefaults.IsTextScaleSupported(value)
+        ? value
+        : throw new InvalidDataException($"textScale must be between {ApplicationSettingsDefaults.MinimumTextScale} and {ApplicationSettingsDefaults.MaximumTextScale}.");
+
+    private static decimal RequireIconScale(decimal value) => ApplicationSettingsDefaults.IsIconScaleSupported(value)
+        ? value
+        : throw new InvalidDataException($"iconScale must be between {ApplicationSettingsDefaults.MinimumIconScale} and {ApplicationSettingsDefaults.MaximumIconScale}.");
 
     private static Dictionary<GameVariant, GameLocationSettings> ParseLocations(IEnumerable<GameLocationDocument>? documents)
     {

@@ -9,6 +9,8 @@ using AAML.Application.Mods.Workshop;
 using AAML.Application.Mods.Grid;
 using AAML.Application.Ports;
 using AAML.Application.Settings;
+using System.Globalization;
+using System.Text;
 
 namespace AAML.Avalonia;
 
@@ -46,13 +48,16 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
     private bool confirmManualDeletion;
     private bool isInspectorVisible = true;
     private bool gridPreferencesLoaded;
+    private string copyStatus = string.Empty;
 
     private readonly IExternalLauncher externalLauncher;
+    private readonly IApplicationUiController ui;
 
-    public ModsViewModel(ApplicationSession session, IExternalLauncher externalLauncher)
+    public ModsViewModel(ApplicationSession session, IExternalLauncher externalLauncher, IApplicationUiController ui)
     {
         this.session = session;
         this.externalLauncher = externalLauncher;
+        this.ui = ui;
         LoadGridPreferences();
         session.PropertyChanged += OnSessionPropertyChanged;
         Refresh = ReactiveCommand.CreateFromTask(async () => (await session.RefreshModsAsync(CancellationToken.None)).IsSuccess ? Result.Success() : Result.Failure(session.Status)).Enhance(text: "Refresh mods", name: "RefreshMods");
@@ -63,7 +68,7 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
         BulkRemoveTags = ReactiveCommand.CreateFromTask(BulkRemoveTagsAsync).Enhance(text: "Remove tags", name: "BulkRemoveTags");
         ClearCategory = ReactiveCommand.Create(() => { SelectedCategory = null; return Result.Success(); }).Enhance(text: "Clear category", name: "ClearCategory");
         ClearFocusedMods = ReactiveCommand.Create(() => { session.ClearFocusedMods(); return Result.Success(); }).Enhance(text: "Clear conflict filter", name: "ClearFocusedMods");
-        DiscardActivation = ReactiveCommand.Create(() => { session.CancelAutoSaveOwner("mods"); session.DiscardModDrafts(); return Result.Success(); }).Enhance(text: "Discard activation edits", name: "DiscardActivation");
+        DiscardChanges = ReactiveCommand.Create(() => { session.DiscardModsOwnedDrafts(); LoadGridPreferences(); return Result.Success(); }).Enhance(text: "Discard mod and view edits", name: "DiscardChanges");
         RefreshWorkshop = ReactiveCommand.CreateFromTask(RefreshWorkshopAsync).Enhance(text: "Refresh Workshop", name: "RefreshWorkshop");
         UpdateSelected = ReactiveCommand.CreateFromTask(UpdateSelectedAsync).Enhance(text: "Update selected", name: "UpdateSelectedMods");
         StopMonitoring = ReactiveCommand.Create(() => { workshopCancellation?.Cancel(); return Result.Success(); }).Enhance(text: "Stop monitoring", name: "StopWorkshopMonitoring");
@@ -95,7 +100,11 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
         RemoveRetainedIntent = ReactiveCommand.CreateFromTask(async () => ConfirmRemoveRetainedIntent && SelectedRow?.WorkshopId is { } id ? ToCommand(await session.RemoveRetainedIntentAsync(id, CancellationToken.None)) : Result.Failure("Confirm removal of the retained intent before continuing.")).Enhance(text: "Remove retained intent", name: "RemoveRetainedIntent");
         PreviewRemoval = ReactiveCommand.CreateFromTask(PreviewRemovalAsync).Enhance(text: "Preview manual removal", name: "PreviewManualRemoval");
         ConfirmRemoval = ReactiveCommand.CreateFromTask(ConfirmRemovalAsync).Enhance(text: "Confirm manual removal", name: "ConfirmManualRemoval");
-        ToggleGroup = ReactiveCommand.Create(() => SelectedRow?.GroupKey is { } key ? Toggle(key) : Result.Failure("Select a group row.")).Enhance(text: "Expand/collapse group", name: "ToggleModGroup");
+        ToggleGroup = ReactiveCommand.Create<ModGridGroupKey?, Result>(key => key is null ? Result.Failure("Select a group row.") : Toggle(key.Value));
+        CopySelectedNames = CopyCommand(SelectedModCopyFormat.Names, "Copy selected names", "CopySelectedNames");
+        CopySelectedPaths = CopyCommand(SelectedModCopyFormat.Paths, "Copy selected paths", "CopySelectedPaths");
+        CopySelectedWorkshopUrls = CopyCommand(SelectedModCopyFormat.WorkshopUrls, "Copy selected Workshop URLs", "CopySelectedWorkshopUrls");
+        CopySelectedReport = CopyCommand(SelectedModCopyFormat.Report, "Copy selected report", "CopySelectedReport");
         CreateCategory = ReactiveCommand.CreateFromTask(async () => await RunTaxonomyAsync(() => session.CreateCategoryAsync(TaxonomyName, CancellationToken.None))).Enhance(text: "Create category", name: "CreateCategory");
         RenameCategory = ReactiveCommand.CreateFromTask(async () => SelectedCategory is null ? Result.Failure("Select a category.") : await RunTaxonomyAsync(() => session.RenameCategoryAsync(SelectedCategory.Id, TaxonomyName, CancellationToken.None))).Enhance(text: "Rename category", name: "RenameCategory");
         MoveCategoryUp = ReactiveCommand.CreateFromTask(async () => SelectedCategory is null ? Result.Failure("Select a category.") : await RunTaxonomyAsync(() => session.ReorderCategoryAsync(SelectedCategory.Id, Math.Max(0, SelectedCategory.Order - 1), CancellationToken.None))).Enhance(text: "Move category up", name: "MoveCategoryUp");
@@ -120,7 +129,7 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
     public IEnhancedCommand<Result> BulkRemoveTags { get; }
     public IEnhancedCommand<Result> ClearCategory { get; }
     public IEnhancedCommand<Result> ClearFocusedMods { get; }
-    public IEnhancedCommand<Result> DiscardActivation { get; }
+    public IEnhancedCommand<Result> DiscardChanges { get; }
     public IEnhancedCommand<Result> RefreshWorkshop { get; }
     public IEnhancedCommand<Result> UpdateSelected { get; }
     public IEnhancedCommand<Result> StopMonitoring { get; }
@@ -156,7 +165,12 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
     public IEnhancedCommand<Result> PreviewRemoval { get; }
     public IEnhancedCommand<Result> ConfirmRemoval { get; }
     public string RemovalSummary { get => removalSummary; private set => this.RaiseAndSetIfChanged(ref removalSummary, value); }
-    public IEnhancedCommand<Result> ToggleGroup { get; }
+    public ReactiveCommand<ModGridGroupKey?, Result> ToggleGroup { get; }
+    public IEnhancedCommand<Result> CopySelectedNames { get; }
+    public IEnhancedCommand<Result> CopySelectedPaths { get; }
+    public IEnhancedCommand<Result> CopySelectedWorkshopUrls { get; }
+    public IEnhancedCommand<Result> CopySelectedReport { get; }
+    public string CopyStatus { get => copyStatus; private set => this.RaiseAndSetIfChanged(ref copyStatus, value); }
     public bool IsInspectorVisible { get => isInspectorVisible; set => this.RaiseAndSetIfChanged(ref isInspectorVisible, value); }
     public ObservableCollection<SessionDependencyRelationship> RequiredDependencies { get; } = [];
     public ObservableCollection<SessionDependencyRelationship> Dependents { get; } = [];
@@ -238,6 +252,7 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
         selectedKeys.Clear();
         foreach (var row in selected) selectedKeys.Add(row.Key!.Value);
         SelectedRow = rows.FirstOrDefault();
+        CopyStatus = string.Empty;
         SelectedPreviewImagePath = SelectedRow?.PreviewImagePath ?? string.Empty;
         OnlineDetails = string.Empty;
         RequiredDependencies.Clear();
@@ -346,6 +361,38 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
 
     private void ApplyFilter() => session.SetModGridFilter(IncludeHidden, SelectedStateFilter?.State);
     private Result Toggle(ModGridGroupKey key) { session.ToggleModGroup(key); return Result.Success(); }
+    private IEnhancedCommand<Result> CopyCommand(SelectedModCopyFormat format, string text, string name) =>
+        ReactiveCommand.CreateFromTask(() => CopySelectedAsync(format)).Enhance(text: text, name: name);
+
+    private async Task<Result> CopySelectedAsync(SelectedModCopyFormat format)
+    {
+        var seen = new HashSet<ModKey>();
+        var selected = Rows.Where(row => row.Key is { } key && selectedKeys.Contains(key) && seen.Add(key))
+            .OrderBy(row => row.Order ?? int.MaxValue)
+            .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.PackageId?.Value ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.Source, StringComparer.Ordinal)
+            .ThenBy(row => row.Location, StringComparer.Ordinal)
+            .ToArray();
+        if (selected.Length == 0)
+        {
+            CopyStatus = "Select at least one current mod to copy.";
+            return Result.Failure(CopyStatus);
+        }
+
+        var text = SelectedModCopyFormatter.Format(selected, format);
+        bool copied;
+        try { copied = await ui.CopyTextAsync(text); }
+        catch (Exception) { copied = false; }
+        if (!copied)
+        {
+            CopyStatus = "Clipboard is unavailable. Nothing was copied.";
+            return Result.Failure(CopyStatus);
+        }
+
+        CopyStatus = $"Copied {selected.Length:N0} selected mod{(selected.Length == 1 ? string.Empty : "s")} in deterministic load order. Review local paths before sharing.";
+        return Result.Success();
+    }
 
     private async Task<Result> LoadDependenciesAsync()
     {
@@ -458,3 +505,48 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
 }
 
 public sealed record StateFilterOption(string Name, ModGridSemanticState? State);
+
+internal enum SelectedModCopyFormat { Names, Paths, WorkshopUrls, Report }
+
+internal static class SelectedModCopyFormatter
+{
+    public static string Format(IReadOnlyList<SessionModRow> rows, SelectedModCopyFormat format) => format switch
+    {
+        SelectedModCopyFormat.Names => string.Join(Environment.NewLine, rows.Select(row => OneLine(row.Name))),
+        SelectedModCopyFormat.Paths => string.Join(Environment.NewLine, rows.Select(Path)),
+        SelectedModCopyFormat.WorkshopUrls => string.Join(Environment.NewLine, rows.Select(Workshop)),
+        SelectedModCopyFormat.Report => Report(rows),
+        _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+    };
+
+    private static string Path(SessionModRow row) => row.IsRetainedMissing
+        ? string.IsNullOrWhiteSpace(row.Location)
+            ? $"[Path unavailable: {OneLine(row.Name)} is not currently installed]"
+            : $"[Not currently installed: {OneLine(row.Name)}; last known path: {OneLine(row.Location)}]"
+        : string.IsNullOrWhiteSpace(row.Location)
+            ? $"[Path unavailable: {OneLine(row.Name)}]"
+            : OneLine(row.Location);
+
+    private static string Workshop(SessionModRow row) => row.WorkshopId is { }
+        ? row.WorkshopUrl
+        : $"[Workshop URL unavailable: {OneLine(row.Name)} has no Workshop ID]";
+
+    private static string Report(IReadOnlyList<SessionModRow> rows)
+    {
+        var output = new StringBuilder().Append("AAML selected mods (").Append(rows.Count.ToString(CultureInfo.InvariantCulture)).AppendLine(")");
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            output.AppendLine().Append('[').Append((index + 1).ToString(CultureInfo.InvariantCulture)).Append("] ").AppendLine(OneLine(row.Name));
+            output.Append("Package ID: ").AppendLine(row.PackageId?.Value ?? "Unavailable");
+            output.Append("Source: ").AppendLine(row.Source.Length == 0 ? "Unavailable" : row.Source);
+            output.Append("Active: ").AppendLine(row.IsActive switch { true => "Yes", false => "No", null => "Unknown" });
+            output.Append("Explicit order: ").AppendLine(row.Order?.ToString(CultureInfo.InvariantCulture) ?? "Not set");
+            output.Append("Path: ").AppendLine(Path(row));
+            output.Append("Workshop URL: ").AppendLine(row.WorkshopId is { } ? row.WorkshopUrl : "Unavailable (no Workshop ID)");
+        }
+        return output.ToString().TrimEnd();
+    }
+
+    private static string OneLine(string value) => string.Join(' ', value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+}

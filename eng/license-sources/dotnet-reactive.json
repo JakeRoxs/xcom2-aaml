@@ -3,14 +3,14 @@
   "sources": [
     {
       "packageNames": ["runtimepack.Microsoft.NETCore.App.Runtime.win-x64", "runtimepack.Microsoft.NETCore.App.Runtime.linux-x64"],
-      "versions": ["10.0.10"],
+      "versions": ["10.0.10", "10.0.11"],
       "classification": "runtime-pack",
       "spdx": "MIT",
       "repository": "https://github.com/dotnet/runtime",
-      "ref": "v10.0.10",
+      "ref": "v10.0.10 and v10.0.11",
       "path": "LICENSE.TXT",
       "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
-      "notes": "Self-contained Microsoft.NETCore.App runtime pack shipped by the staged artifact."
+      "notes": "Self-contained Microsoft.NETCore.App runtime pack shipped by the staged artifact; both admitted patch releases use the same upstream MIT license."
     },
     {
       "packagePatterns": ["Microsoft.Extensions.*"],

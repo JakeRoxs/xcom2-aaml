@@ -11,6 +11,7 @@ public sealed class AutoSaveCoordinator : IDisposable
     private readonly object sync = new();
     private readonly Dictionary<string, Registration> registrations = [];
     private readonly Dictionary<string, CancellationTokenSource> pending = [];
+    private readonly Dictionary<string, HashSet<CancellationTokenSource>> active = [];
     private string? activeOwner;
     private bool enabled;
     private bool disposed;
@@ -83,13 +84,23 @@ public sealed class AutoSaveCoordinator : IDisposable
 
     public void Cancel(string owner)
     {
-        CancellationTokenSource? source;
+        CancellationTokenSource? pendingSource;
+        CancellationTokenSource[] activeSources;
         lock (sync)
         {
-            source = pending.GetValueOrDefault(owner);
+            pendingSource = pending.GetValueOrDefault(owner);
+            activeSources = active.TryGetValue(owner, out var sources) ? sources.ToArray() : [];
             pending.Remove(owner);
         }
-        source?.Cancel();
+        CancelSource(pendingSource);
+        foreach (var source in activeSources.Where(source => !ReferenceEquals(source, pendingSource))) CancelSource(source);
+    }
+
+    public async Task CancelAndWaitAsync(string owner, CancellationToken cancellationToken)
+    {
+        Cancel(owner);
+        await saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        saveGate.Release();
     }
 
     private async Task RunDelayedAsync(string owner, CancellationTokenSource source)
@@ -100,9 +111,13 @@ public sealed class AutoSaveCoordinator : IDisposable
             lock (sync)
             {
                 if (pending.GetValueOrDefault(owner) == source) pending.Remove(owner);
+                source.Token.ThrowIfCancellationRequested();
+                if (!active.TryGetValue(owner, out var sources)) active[owner] = sources = [];
+                sources.Add(source);
             }
-            if (registrations.TryGetValue(owner, out var registration) && await registration.IsDirtyAsync(source.Token).ConfigureAwait(false))
-                await registration.Save(source.Token).ConfigureAwait(false);
+            if (registrations.TryGetValue(owner, out var registration))
+                if (await registration.IsDirtyAsync(source.Token).ConfigureAwait(false))
+                    await registration.Save(source.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (source.IsCancellationRequested) { }
         finally
@@ -110,6 +125,11 @@ public sealed class AutoSaveCoordinator : IDisposable
             lock (sync)
             {
                 if (pending.GetValueOrDefault(owner) == source) pending.Remove(owner);
+                if (active.TryGetValue(owner, out var sources))
+                {
+                    sources.Remove(source);
+                    if (sources.Count == 0) active.Remove(owner);
+                }
             }
             source.Dispose();
         }
@@ -121,8 +141,16 @@ public sealed class AutoSaveCoordinator : IDisposable
         disposed = true;
         string[] owners;
         lock (sync) owners = pending.Keys.ToArray();
-        foreach (var owner in owners) Cancel(owner);
+        string[] activeOwners;
+        lock (sync) activeOwners = active.Keys.ToArray();
+        foreach (var owner in owners.Concat(activeOwners).Distinct(StringComparer.Ordinal)) Cancel(owner);
         saveGate.Dispose();
+    }
+
+    private static void CancelSource(CancellationTokenSource? source)
+    {
+        try { source?.Cancel(); }
+        catch (ObjectDisposedException) { }
     }
 
     private sealed record Registration(Func<bool> IsDirty, Func<CancellationToken, Task<bool>> IsDirtyAsync, Func<CancellationToken, Task<Result>> Save);

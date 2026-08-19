@@ -2,9 +2,28 @@ name: AAML Desktop Smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Release workflow run containing the finalized Windows archive
+        required: true
+        type: number
+      artifact_name:
+        description: Finalized Windows artifact name
+        required: true
+        type: string
+      archive_name:
+        description: Exact Windows ZIP filename
+        required: true
+        type: string
+      version:
+        description: Expected embedded release version
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
+  attestations: read
 
 jobs:
   windows:
@@ -12,17 +31,52 @@ jobs:
     environment: desktop-smoke
     timeout-minutes: 15
     steps:
+      - name: Bind qualification to successful canonical release run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          ARCHIVE_NAME: ${{ inputs.archive_name }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:EXPECTED_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') { throw 'Expected version is not SemVer.' }
+          $expectedArtifactName = "AAML-$env:EXPECTED_VERSION-win-x64"
+          if ($env:ARTIFACT_NAME -cne $expectedArtifactName) { throw "Artifact name must be $expectedArtifactName." }
+          if ([System.IO.Path]::GetFileName($env:ARCHIVE_NAME) -cne $env:ARCHIVE_NAME -or $env:ARCHIVE_NAME -cne "$expectedArtifactName.zip") { throw 'Archive name is not the expected leaf filename.' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN_ID" | ConvertFrom-Json
+          $repository = gh api "repos/$env:GITHUB_REPOSITORY" | ConvertFrom-Json
+          if ($run.path -ne '.github/workflows/release.yml' -or $run.conclusion -ne 'success') { throw 'Source run is not a successful canonical release workflow.' }
+          if ($run.event -eq 'workflow_dispatch' -and $run.head_branch -ne $repository.default_branch) { throw 'Manual release qualification must originate from the default branch.' }
+          if ($run.event -eq 'push' -and $run.head_branch -notlike 'v*') { throw 'Push release qualification must originate from a v* tag.' }
+          if ($run.event -notin @('workflow_dispatch', 'push')) { throw "Unsupported release event: $($run.event)" }
+          if ($run.head_sha -notmatch '^[0-9a-f]{40}$') { throw 'Source run has an invalid head SHA.' }
+          $comparison = gh api "repos/$env:GITHUB_REPOSITORY/compare/$($repository.default_branch)...$($run.head_sha)" | ConvertFrom-Json
+          if ($comparison.status -notin @('behind', 'identical')) { throw 'Release head is not contained by the protected default branch.' }
+          "RELEASE_HEAD_SHA=$($run.head_sha)" | Add-Content -LiteralPath $env:GITHUB_ENV
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
         with:
-          global-json-file: global.json
-      - run: dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
+          ref: ${{ env.RELEASE_HEAD_SHA }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ runner.temp }}/AAML Exact Download
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
       - shell: pwsh
-        run: ./eng/stage-aaml-package.ps1 -Rid 'win-x64' -OutputDirectory '${{ runner.temp }}/AAML Desktop Smoke/win-x64' -Version '0.0.0-smoke.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -WindowsSingleFile
+        env:
+          ARCHIVE_PATH: ${{ runner.temp }}/AAML Exact Download/${{ inputs.archive_name }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sidecar = "$env:ARCHIVE_PATH.sha256"
+          if (-not (Test-Path -LiteralPath $sidecar -PathType Leaf)) { throw 'Finalizer artifact has no archive SHA-256 sidecar.' }
+          $expectedHash = (Get-Content -LiteralPath $sidecar -Raw).Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)[0]
+          ./eng/qualification/assert-exact-artifact.ps1 -ArchivePath $env:ARCHIVE_PATH -ExpectedArchiveSha256 $expectedHash -ExpectedRepository "https://github.com/$env:GITHUB_REPOSITORY" -ExpectedCommit $env:RELEASE_HEAD_SHA -ExpectedVersion $env:EXPECTED_VERSION -ExtractionDirectory '${{ runner.temp }}/AAML Ω Exact Archive'
+          gh attestation verify $env:ARCHIVE_PATH --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/release.yml" --source-digest $env:RELEASE_HEAD_SHA
       - shell: pwsh
-        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Desktop Smoke/win-x64' -ManifestPath '${{ github.workspace }}/eng/package-manifests/aaml-win-x64-single-file.json' -GenerateChecksums
-      - shell: pwsh
-        run: ./eng/run-windows-desktop-smoke.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Desktop Smoke/win-x64' -EvidenceDirectory '${{ runner.temp }}/AAML Desktop Smoke/evidence'
+        run: ./eng/test-windows-readonly-install.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Ω Exact Archive/win-x64' -EvidenceDirectory '${{ runner.temp }}/AAML Desktop Smoke/evidence'
       - if: always()
         uses: actions/upload-artifact@v7
         with:

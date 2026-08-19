@@ -3,18 +3,19 @@
     <StackPanel>
       <TextBlock Classes="title" Text="Migration" />
       <TextBlock Classes="muted" Text="Rehearse legacy AML lists and snapshots before adopting them. Previewing never changes source or modern data." />
+      <TextBlock Classes="muted" Text="{Binding CapabilityGuidance}" TextWrapping="Wrap" />
     </StackPanel>
     <StackPanel Grid.Row="2" Spacing="10">
-      <WrapPanel><ToggleSwitch IsChecked="{Binding ReplaceActiveSet}" Content="Replace current active set" /><Button AutomationProperties.AutomationId="MigrationPreviewActiveModsButton" Margin="12,0,0,0" Command="{Binding PreviewActiveMods}" Content="Preview game ActiveMods" /><Button AutomationProperties.AutomationId="MigrationConfirmActiveModsButton" Margin="8,0,0,0" Command="{Binding ApplyActiveMods}" Content="Confirm active mods" /></WrapPanel>
-      <WrapPanel><Button Command="{Binding PreviewSnapshots}" Content="Choose legacy settings.json" /><Button Margin="8,0,0,0" Command="{Binding ApplySnapshots}" Content="Confirm snapshot import" /></WrapPanel>
-      <WrapPanel><Button Command="{Binding PreviewOverrideCleanup}" Content="Preview obsolete overrides" /><Button Margin="8,0,0,0" Command="{Binding ApplyOverrideCleanup}" Content="Confirm cleanup" /></WrapPanel>
+      <WrapPanel IsVisible="{Binding CanPreviewActiveMods}"><ToggleSwitch IsChecked="{Binding ReplaceActiveSet}" Content="Replace current active set" /><Button AutomationProperties.AutomationId="MigrationPreviewActiveModsButton" Margin="12,0,0,0" Command="{Binding PreviewActiveMods}" Content="Preview game ActiveMods" /><Button AutomationProperties.AutomationId="MigrationConfirmActiveModsButton" Margin="8,0,0,0" IsEnabled="{Binding CanApplyActiveMods}" Command="{Binding ApplyActiveMods}" Content="Confirm active mods" /></WrapPanel>
+      <WrapPanel><Button Command="{Binding PreviewSnapshots}" Content="Choose legacy settings.json" /><Button Margin="8,0,0,0" IsEnabled="{Binding CanApplySnapshots}" Command="{Binding ApplySnapshots}" Content="Confirm snapshot import" /></WrapPanel>
+      <WrapPanel IsVisible="{Binding CanPreviewOverrideCleanup}"><Button Command="{Binding PreviewOverrideCleanup}" Content="Preview obsolete overrides" /><Button Margin="8,0,0,0" IsEnabled="{Binding CanApplyOverrideCleanup}" Command="{Binding ApplyOverrideCleanup}" Content="Confirm cleanup" /></WrapPanel>
     </StackPanel>
     <StackPanel Grid.Row="4" Spacing="8">
       <TextBlock FontWeight="SemiBold" Text="Existing game mod roots" />
       <TextBlock Classes="muted" Text="Preview is read-only. Select valid roots explicitly, then confirm to persist only those selections." TextWrapping="Wrap" />
-      <WrapPanel>
+      <WrapPanel IsVisible="{Binding CanPreviewModRoots}">
         <Button AutomationProperties.AutomationId="MigrationPreviewModRootsButton" MinHeight="48" Command="{Binding PreviewModRoots}" Content="Preview ModRootDirs" />
-        <Button AutomationProperties.AutomationId="MigrationConfirmModRootsButton" MinHeight="48" Margin="8,0,0,0" Command="{Binding ApplyModRoots}" Content="Confirm selected roots" />
+        <Button AutomationProperties.AutomationId="MigrationConfirmModRootsButton" MinHeight="48" Margin="8,0,0,0" IsEnabled="{Binding CanApplyModRoots}" Command="{Binding ApplyModRoots}" Content="Confirm selected roots" />
       </WrapPanel>
       <ItemsControl AutomationProperties.AutomationId="MigrationModRootList" ItemsSource="{Binding ModRootRows}">
         <ItemsControl.ItemTemplate>

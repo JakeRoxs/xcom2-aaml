@@ -13,7 +13,7 @@
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <TextBlock IsVisible="{Binding HasUnsaved}" VerticalAlignment="Center" Text="{Binding UnsavedModDraftCount, StringFormat='{}{0} unsaved'}" />
         <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding AutoSaveStatus}" />
-        <Button Command="{Binding DiscardActivation}" Content="Discard" />
+        <Button Command="{Binding DiscardChanges}" Content="Discard" />
         <Button Classes="accent" Command="{Binding Save}" Content="Save changes" />
       </StackPanel>
     </Grid>
@@ -29,7 +29,7 @@
       <Button Grid.Column="5" Command="{Binding SaveView}" Content="Save view" />
     </Grid>
 
-    <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="12" IsVisible="{Binding HasSelection}">
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" IsVisible="{Binding HasSelection}">
       <TextBlock VerticalAlignment="Center" Text="{Binding SelectedCount, StringFormat='{}{0} selected'}" />
       <WrapPanel Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal">
         <Button Margin="0,0,6,6" Command="{Binding ActivateSelected}" Content="Activate" />
@@ -41,11 +41,19 @@
             <Button Margin="0,0,6,6" Command="{Binding Renumber}" Content="Renumber all" />
             <Button Margin="0,0,6,6" Command="{Binding HideSelected}" Content="Hide selected" />
             <Button Margin="0,0,6,6" Command="{Binding UnhideSelected}" Content="Unhide selected" />
-            <Button Margin="0,0,6,6" Command="{Binding ToggleGroup}" Content="Expand/collapse group" />
+            <Expander AutomationProperties.AutomationId="ModsCopySelected" Header="Copy selected" IsExpanded="False">
+              <WrapPanel MaxWidth="620" Orientation="Horizontal">
+                <Button AutomationProperties.AutomationId="ModsCopyNamesButton" MinHeight="48" Margin="0,0,6,6" Command="{Binding CopySelectedNames}" Content="Names" />
+                <Button AutomationProperties.AutomationId="ModsCopyPathsButton" MinHeight="48" Margin="0,0,6,6" Command="{Binding CopySelectedPaths}" Content="Paths" />
+                <Button AutomationProperties.AutomationId="ModsCopyWorkshopButton" MinHeight="48" Margin="0,0,6,6" Command="{Binding CopySelectedWorkshopUrls}" Content="Workshop URLs" />
+                <Button AutomationProperties.AutomationId="ModsCopyReportButton" MinHeight="48" Margin="0,0,6,6" Command="{Binding CopySelectedReport}" Content="Combined report" />
+              </WrapPanel>
+            </Expander>
             <Button IsVisible="{Binding HasFocusedMods}" Command="{Binding ClearFocusedMods}" Content="Clear conflict filter" />
           </WrapPanel>
         </Expander>
       </WrapPanel>
+      <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="muted" TextWrapping="Wrap" Text="{Binding CopyStatus}" />
     </Grid>
 
     <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
@@ -66,7 +74,7 @@
     </Grid>
 
     <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto">
-      <DataGrid x:Name="ModsGrid" AutomationProperties.AutomationId="ModsGrid" MinWidth="320" ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="False" RowHeight="34" SelectionMode="Extended" CanUserResizeColumns="True" CanUserReorderColumns="True" ScrollViewer.HorizontalScrollBarVisibility="Auto" SelectionChanged="OnSelectionChanged">
+      <DataGrid x:Name="ModsGrid" AutomationProperties.AutomationId="ModsGrid" MinWidth="320" ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="False" RowHeight="{DynamicResource AamlGridRowHeight}" SelectionMode="Extended" CanUserResizeColumns="True" CanUserReorderColumns="True" ScrollViewer.HorizontalScrollBarVisibility="Auto" SelectionChanged="OnSelectionChanged">
         <DataGrid.Styles>
           <Style Selector="DataGridColumnHeader">
             <Setter Property="Padding" Value="6,0" />
@@ -82,7 +90,21 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTextColumn Header="Name" Binding="{Binding Name}" IsReadOnly="True" Width="*" MinWidth="260" CanUserResize="True" />
+          <DataGridTemplateColumn Header="Name" IsReadOnly="True" Width="*" MinWidth="260" CanUserResize="True">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="local:SessionModRow">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button AutomationProperties.AutomationId="ModsGroupToggle"
+                          AutomationProperties.Name="{Binding GroupToggleLabel}"
+                          IsVisible="{Binding IsGroup}"
+                          Command="{Binding $parent[local:ModsView].((local:ModsViewModel)DataContext).ToggleGroup}"
+                          CommandParameter="{Binding GroupKey}"
+                          Content="{Binding GroupToggleLabel}" />
+                  <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
           <DataGridTextColumn Header="Order" Binding="{Binding Order, Mode=TwoWay}" Width="68" MinWidth="56" CanUserResize="True" CanUserSort="False" />
           <DataGridTemplateColumn Header="WotC" Width="96" MinWidth="88" CanUserResize="True" CanUserSort="False">
             <DataGridTemplateColumn.CellTemplate>
@@ -95,7 +117,7 @@
                         Background="{DynamicResource SystemControlHighlightListAccentLowBrush}"
                         AutomationProperties.Name="War of the Chosen required"
                         AutomationProperties.HelpText="This mod requires War of the Chosen and is not an interactive control">
-                  <TextBlock FontSize="12" FontWeight="SemiBold" Text="Required" />
+                  <TextBlock Classes="badge" FontWeight="SemiBold" Text="Required" />
                 </Border>
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
@@ -127,7 +149,7 @@
       <Expander Grid.Row="2" Header="Details inspector" IsExpanded="True">
         <ScrollViewer>
           <StackPanel Margin="12,8,0,0" Spacing="10">
-            <TextBlock FontSize="20" FontWeight="SemiBold" Text="{Binding SelectedRow.Name, FallbackValue=Select a mod}" />
+            <TextBlock Classes="section-title" Text="{Binding SelectedRow.Name, FallbackValue=Select a mod}" />
 
             <Expander Header="Overview" IsExpanded="False">
               <StackPanel Spacing="6">

@@ -10,14 +10,14 @@
           <DataTemplate>
             <StackPanel>
               <TextBlock Text="{Binding ModName}" />
-              <TextBlock Classes="muted" FontSize="11" Text="{Binding RelativePath}" />
+              <TextBlock Classes="muted small" Text="{Binding RelativePath}" />
             </StackPanel>
           </DataTemplate>
         </ComboBox.ItemTemplate>
       </ComboBox>
       <Button AutomationProperties.AutomationId="ConfigurationsOpenButton" Grid.Column="1" Command="{Binding Open}" Content="Open" />
     </Grid>
-    <edit:TextEditor x:Name="ConfigurationEditor" AutomationProperties.AutomationId="ConfigurationsEditor" Grid.Row="4" ShowLineNumbers="True" WordWrap="False" FontFamily="Cascadia Code,Consolas,Menlo,Monospace" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
+    <edit:TextEditor x:Name="ConfigurationEditor" AutomationProperties.AutomationId="ConfigurationsEditor" Grid.Row="4" ShowLineNumbers="True" WordWrap="False" FontFamily="Cascadia Code,Consolas,Menlo,Monospace" FontSize="{DynamicResource AamlBodyFontSize}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
     <WrapPanel Grid.Row="6" Orientation="Horizontal">
       <Button Margin="0,0,6,6" Command="{Binding Save}" Content="Save atomically" />
       <Button Margin="0,0,6,6" Command="{Binding Reload}" Content="Discard edits and reload" />
@@ -32,8 +32,8 @@
       <TextBlock AutomationProperties.AutomationId="ConfigurationsStatus" Margin="8,0" VerticalAlignment="Center" Text="{Binding Status}" />
     </WrapPanel>
     <Grid Grid.Row="8" ColumnDefinitions="*,8,*">
-      <edit:TextEditor x:Name="LeftDiffEditor" IsReadOnly="True" ShowLineNumbers="True" WordWrap="False" FontFamily="Cascadia Code,Consolas,Menlo,Monospace" />
-      <edit:TextEditor x:Name="RightDiffEditor" Grid.Column="2" IsReadOnly="True" ShowLineNumbers="True" WordWrap="False" FontFamily="Cascadia Code,Consolas,Menlo,Monospace" />
+      <edit:TextEditor x:Name="LeftDiffEditor" IsReadOnly="True" ShowLineNumbers="True" WordWrap="False" FontFamily="Cascadia Code,Consolas,Menlo,Monospace" FontSize="{DynamicResource AamlBodyFontSize}" />
+      <edit:TextEditor x:Name="RightDiffEditor" Grid.Column="2" IsReadOnly="True" ShowLineNumbers="True" WordWrap="False" FontFamily="Cascadia Code,Consolas,Menlo,Monospace" FontSize="{DynamicResource AamlBodyFontSize}" />
     </Grid>
   </Grid>
 </UserControl>

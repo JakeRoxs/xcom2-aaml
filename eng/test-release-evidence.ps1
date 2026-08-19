@@ -75,17 +75,6 @@ function New-Fixture {
     Write-Bytes (Join-Path $artifact 'Fixture.Runtime.dll') $managed
     Write-Bytes (Join-Path $artifact 'libfixture.so') $native
     Write-Bytes (Join-Path $artifact 'fr/Fixture.Runtime.resources.dll') $resource
-    $toolTargets = [ordered]@{
-        'AAML.SteamProbe/1.0.0' = (New-DepsLibrary project @{ 'AAML.SteamProbe.dll' = @{} } @{} @{} @{})
-        'Fixture.Tool/2.0.0' = (New-DepsLibrary package @{ 'lib/net10.0/Fixture.Tool.dll' = @{} } @{} @{} @{})
-    }
-    $toolLibraries = [ordered]@{
-        'AAML.SteamProbe/1.0.0' = @{ type = 'project'; serviceable = $false; sha512 = '' }
-        'Fixture.Tool/2.0.0' = @{ type = 'package'; serviceable = $true; sha512 = 'fixture-content-hash' }
-    }
-    Add-FixtureApp $artifact 'tools/steam-probe' 'AAML.SteamProbe' 'linux-x64' $toolTargets $toolLibraries
-    Write-Bytes (Join-Path $artifact 'tools/steam-probe/AAML.SteamProbe.dll') $managed
-    Write-Bytes (Join-Path $artifact 'tools/steam-probe/Fixture.Tool.dll') $managed
     $wrapperTargets = [ordered]@{
         'AAML.ProtonWrapper/1.0.0' = (New-DepsLibrary project @{ 'AAML.ProtonWrapper.dll' = @{} } @{} @{} @{})
         'Fixture.Tool/2.0.0' = (New-DepsLibrary package @{ 'lib/net10.0/Fixture.Tool.dll' = @{} } @{} @{} @{})
@@ -132,7 +121,7 @@ try {
     Invoke-FixtureGeneration $valid
     $sbom = Get-Content -LiteralPath (Join-Path $valid.Artifact 'sbom.cdx.json') -Raw | ConvertFrom-Json
     $names = @($sbom.components.name)
-    foreach ($expected in @('AAML.Avalonia', 'AAML.ProtonWrapper', 'AAML.SteamProbe', 'Fixture.Runtime', 'Fixture.Tool', 'Steamworks.NET', 'libsteam_api.so')) {
+    foreach ($expected in @('AAML.Avalonia', 'AAML.ProtonWrapper', 'Fixture.Runtime', 'Fixture.Tool', 'Steamworks.NET', 'libsteam_api.so')) {
         if ($names -notcontains $expected) { throw "Valid fixture omitted component: $expected" }
     }
     if ($names -contains 'Fixture.BuildOnly') { throw 'Build-only package entered the shipped closure.' }
@@ -153,10 +142,10 @@ try {
     } 'multiply attributed'
     Assert-Failure 'version-conflict' { param($f)
         Add-FixturePackage $f.NuGet 'Fixture.Runtime' '2.0.0' @{ 'lib/net10.0/Fixture.Runtime.dll' = ([byte[]](1, 2, 3, 4)) }
-        $path = Join-Path $f.Artifact 'tools/steam-probe/AAML.SteamProbe.deps.json'; $deps = Get-Content $path -Raw | ConvertFrom-Json
+        $path = Join-Path $f.Artifact 'tools/proton-wrapper/AAML.ProtonWrapper.deps.json'; $deps = Get-Content $path -Raw | ConvertFrom-Json
         @($deps.targets.PSObject.Properties)[0].Value | Add-Member -NotePropertyName 'Fixture.Runtime/2.0.0' -NotePropertyValue @{ runtime = @{ 'lib/net10.0/Fixture.Runtime.dll' = @{} } }
         $deps.libraries | Add-Member -NotePropertyName 'Fixture.Runtime/2.0.0' -NotePropertyValue @{ type = 'package'; sha512 = 'fixture-content-hash' }
-        Write-Bytes (Join-Path $f.Artifact 'tools/steam-probe/Fixture.Runtime.dll') ([byte[]](1, 2, 3, 4))
+        Write-Bytes (Join-Path $f.Artifact 'tools/proton-wrapper/Fixture.Runtime.dll') ([byte[]](1, 2, 3, 4))
         $deps | ConvertTo-Json -Depth 20 | Set-Content $path
     } 'Conflicting package versions'
 

@@ -1,5 +1,6 @@
 using AAML.Application.Common;
 using AAML.Domain.Mods;
+using AAML.Domain.Games;
 
 namespace AAML.Application.Ports;
 
@@ -19,6 +20,15 @@ public interface IApplicationPaths
     string StateDirectory { get; }
     string CacheDirectory { get; }
     string RuntimeDirectory { get; }
+}
+
+/// <summary>Qualified game-owned user-data and generated-configuration locations.</summary>
+public sealed record GameUserDataLocations(string UserDataDirectory, string ConfigurationDirectory);
+
+/// <summary>Resolves platform-owned locations for one configured game variant without creating them.</summary>
+public interface IGameUserDataLocator
+{
+    Result<GameUserDataLocations> Locate(GameVariant variant, string? installationLocation);
 }
 
 /// <summary>Resolves an existing host path to its physical filesystem identity.</summary>

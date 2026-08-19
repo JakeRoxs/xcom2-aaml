@@ -14,6 +14,10 @@ public sealed class WindowsLegacyGameConfigurationSource : ILegacyGameConfigurat
 
     public WindowsLegacyGameConfigurationSource(IAtomicTextWriter writer) : this(writer, Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)) { }
     internal WindowsLegacyGameConfigurationSource(IAtomicTextWriter writer, string documentsDirectory) { this.writer = writer; this.documentsDirectory = documentsDirectory; }
+    public LegacyGameConfigurationCapabilities Capabilities => LegacyGameConfigurationCapabilities.Windows;
+    public bool SupportsActiveMods(GameVariant variant) => variant != GameVariant.XCom2WarOfTheChosenChallengeMode;
+    public bool SupportsModRoots(GameVariant variant) => variant != GameVariant.XCom2WarOfTheChosenChallengeMode;
+    public bool SupportsOverrideCleanup(GameVariant variant) => variant != GameVariant.XCom2WarOfTheChosenChallengeMode;
 
     public async Task<Result<IReadOnlyList<ActiveModSource>>> ReadActiveModsAsync(GameVariant variant, string? installationLocation, CancellationToken cancellationToken)
     {

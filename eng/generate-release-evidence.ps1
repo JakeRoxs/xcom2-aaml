@@ -131,7 +131,7 @@ if ($Rid -eq 'linux-x64') {
     $lockPaths += 'tools/AAML.ProtonWrapper/packages.lock.json'
 }
 $firstPartyNames = @('AAML.Avalonia', 'AAML.Domain', 'AAML.Application', 'AAML.Infrastructure.Common', 'AAML.Infrastructure.Windows', 'AAML.Infrastructure.Linux', 'AAML.Infrastructure.Steam')
-if ($Rid -eq 'linux-x64') { $firstPartyNames += @('AAML.ProtonWrapper', 'AAML.SteamProbe') }
+if ($Rid -eq 'linux-x64') { $firstPartyNames += 'AAML.ProtonWrapper' }
 
 $restoredPackages = @{}
 $dependencyEdges = @{}

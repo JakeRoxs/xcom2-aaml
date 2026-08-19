@@ -10,7 +10,7 @@
   <UserControl.Resources>
     <DataTemplate x:Key="ShellRailItemTemplate" DataType="sections:ISection">
       <StackPanel Classes="shell-rail-item" MinHeight="52" Orientation="Horizontal" Spacing="10" ToolTip.Tip="{Binding FriendlyName}">
-        <Viewbox Width="32" Height="32" VerticalAlignment="Center">
+        <Viewbox Width="{DynamicResource AamlShellIconSize}" Height="{DynamicResource AamlShellIconSize}" VerticalAlignment="Center">
           <ContentControl Content="{Binding Icon}" />
         </Viewbox>
         <TextBlock IsVisible="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
@@ -42,14 +42,14 @@
       <Grid RowDefinitions="*,Auto">
         <zac:SectionStrip Orientation="Vertical"
                           ItemTemplate="{StaticResource ShellRailItemTemplate}"
-                          IconSize="32"
+                          IconSize="{DynamicResource AamlShellIconSize}"
                           ItemPadding="4,8"
                           ItemSpacing="2"
                           Padding="2"
                           Sections="{Binding RootLevel.Sections}"
                           SelectedSection="{Binding RootLevel.SelectedSection.Value, Mode=TwoWay}" />
         <Panel Grid.Row="1">
-          <ToggleButton AutomationProperties.AutomationId="ShellRailCollapseButton"
+          <ToggleButton AutomationProperties.AutomationId="ShellRailCollapseButton" Classes="shell-icon"
                         AutomationProperties.Name="Collapse navigation"
                         Margin="8"
                         HorizontalAlignment="Left"
@@ -57,7 +57,7 @@
                         IsChecked="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}, Mode=TwoWay}"
                         Content="☰"
                         ToolTip.Tip="Switch to icon-only navigation" />
-          <ToggleButton AutomationProperties.AutomationId="ShellRailExpandButton"
+          <ToggleButton AutomationProperties.AutomationId="ShellRailExpandButton" Classes="shell-icon"
                         AutomationProperties.Name="Expand navigation"
                         Margin="8"
                         HorizontalAlignment="Center"

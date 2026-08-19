@@ -9,6 +9,7 @@ using AAML.Application.Diagnostics;
 using AAML.Application.Ports;
 using AAML.Application.Settings;
 using AAML.Application.Launching;
+using AAML.Domain.Games;
 
 namespace AAML.Avalonia.Tests;
 
@@ -53,6 +54,36 @@ public sealed class ProductionSectionTests
                 var view = Activator.CreateInstance(viewType);
                 view.Should().NotBeNull($"{viewType.Name} must load its production AXAML");
             }
+        }, TestContext.CancellationToken);
+    }
+
+    [TestMethod]
+    public async Task AccessibilityResourcesUpdateIndependentlyAndCommonViewsMeasureAtSupportedExtremes()
+    {
+        await AvaloniaTestHost.Session.Dispatch(() =>
+        {
+            var controller = new ApplicationUiController();
+            controller.ApplyAccessibilitySizing(1.50m, 0.75m);
+            global::Avalonia.Application.Current!.Resources["AamlBodyFontSize"].Should().Be(21d);
+            global::Avalonia.Application.Current.Resources["AamlPageTitleFontSize"].Should().Be(42d);
+            global::Avalonia.Application.Current.Resources["AamlShellIconSize"].Should().Be(24d);
+            foreach (var (textScale, iconScale) in new[] { (1.50m, 1.50m), (0.80m, 0.75m) })
+            {
+                controller.ApplyAccessibilitySizing(textScale, iconScale);
+                foreach (var availableWidth in new[] { 620d, 760d })
+                for (var index = 0; index < ViewTypes.Length; index++)
+                {
+                    var viewType = ViewTypes[index];
+                    var view = (global::Avalonia.Controls.Control)Activator.CreateInstance(viewType)!;
+                    view.DataContext = CreateViewModel(ViewModelTypes[index]);
+                    view.Measure(new global::Avalonia.Size(availableWidth, 560));
+                    view.Arrange(new global::Avalonia.Rect(0, 0, availableWidth, 560));
+                    view.Bounds.Width.Should().Be(availableWidth);
+                    view.Bounds.Height.Should().Be(560);
+                }
+            }
+            ((double)global::Avalonia.Application.Current.Resources["AamlBodyFontSize"]!).Should().BeApproximately(11.2d, 0.0001d);
+            global::Avalonia.Application.Current.Resources["AamlShellIconSize"].Should().Be(24d);
         }, TestContext.CancellationToken);
     }
 
@@ -110,6 +141,33 @@ public sealed class ProductionSectionTests
     }
 
     [TestMethod]
+    public void ConfirmationStateStartsDisabledWithoutCurrentPreviews()
+    {
+        using var profiles = (ProfilesViewModel)CreateViewModel(typeof(ProfilesViewModel));
+        using var migration = (MigrationViewModel)CreateViewModel(typeof(MigrationViewModel));
+        using var cleanup = (ModCleanupViewModel)CreateViewModel(typeof(ModCleanupViewModel));
+
+        profiles.CanConfirmLegacy.Should().BeFalse();
+        migration.CanApplyActiveMods.Should().BeFalse();
+        migration.CanApplySnapshots.Should().BeFalse();
+        migration.CanApplyOverrideCleanup.Should().BeFalse();
+        migration.CanApplyModRoots.Should().BeFalse();
+        cleanup.CanConfirm.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void EverySectionSubscriptionOwnerIsDisposable()
+    {
+        var subscriptionOwners = new[]
+        {
+            typeof(DashboardViewModel), typeof(ModsViewModel), typeof(ConflictsViewModel),
+            typeof(ProfilesViewModel), typeof(MigrationViewModel), typeof(SupportViewModel), typeof(ModCleanupViewModel)
+        };
+
+        subscriptionOwners.Should().OnlyContain(type => typeof(IDisposable).IsAssignableFrom(type));
+    }
+
+    [TestMethod]
     public async Task EmptyProfileAndSettingsActionsFailSafely()
     {
         var profiles = (ProfilesViewModel)CreateViewModel(typeof(ProfilesViewModel));
@@ -154,9 +212,65 @@ public sealed class ProductionSectionTests
         opened.Should().OnlyContain(uri => uri.Host == "github.com" && uri.AbsolutePath.StartsWith("/JakeRoxs/xcom2-aaml", StringComparison.Ordinal));
     }
 
-    private static object CreateViewModel(Type type, params object[] overrides)
+    [TestMethod]
+    public async Task SupportOpensOnlyQualifiedExistingSelectedGameLocations()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "aaml-support-game-data", Guid.NewGuid().ToString("N"));
+        var installation = Path.Combine(root, "Game installation & Ω");
+        var userData = Path.Combine(root, "User data");
+        var configuration = Path.Combine(userData, "XComGame", "Config");
+        Directory.CreateDirectory(installation);
+        Directory.CreateDirectory(configuration);
+        try
+        {
+            var session = CreateSession();
+            session.PrimeSettings(new(ApplicationSettingsDefaults.CurrentSchemaVersion, GameVariant.XCom2, installation, [], [], [], [], [], CheckForUpdates: false));
+            var locator = new Mock<IGameUserDataLocator>();
+            locator.Setup(service => service.Locate(GameVariant.XCom2, installation))
+                .Returns(AAML.Application.Common.Result<GameUserDataLocations>.Success(new(userData, configuration)));
+            var launcher = new Mock<IExternalLauncher>();
+            var opened = new List<string>();
+            launcher.Setup(service => service.OpenDirectoryAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Callback<string, CancellationToken>((path, _) => opened.Add(path))
+                .ReturnsAsync(AAML.Application.Common.Result.Success());
+            using var viewModel = new SupportViewModel(session, launcher.Object, Mock.Of<IApplicationPaths>(), Mock.Of<IApplicationDiagnostics>(),
+                Mock.Of<IApplicationVersionProvider>(), Mock.Of<IApplicationUiController>(), Mock.Of<IGameLogLocator>(), locator.Object);
+
+            (await Execute(viewModel.OpenGame)).IsSuccess.Should().BeTrue();
+            (await Execute(viewModel.OpenGameUserData)).IsSuccess.Should().BeTrue();
+            (await Execute(viewModel.OpenGameConfiguration)).IsSuccess.Should().BeTrue();
+
+            opened.Should().Equal(installation, userData, configuration);
+            locator.Verify(service => service.Locate(GameVariant.XCom2, installation), Times.Exactly(2));
+            Directory.Delete(configuration, true);
+            var missing = await Execute(viewModel.OpenGameConfiguration);
+            missing.Error.Should().Contain("Launch that game variant once");
+            opened.Should().HaveCount(3);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task SupportPropagatesLocatorGuidanceWithoutOpeningOrCreatingDirectories()
     {
         var session = CreateSession();
+        session.PrimeSettings(new(ApplicationSettingsDefaults.CurrentSchemaVersion, GameVariant.ChimeraSquad, null, [], [], [], [], [], CheckForUpdates: false));
+        var locator = new Mock<IGameUserDataLocator>();
+        locator.Setup(service => service.Locate(GameVariant.ChimeraSquad, null))
+            .Returns(AAML.Application.Common.Result<GameUserDataLocations>.Failure(new("game_data.variant_unsupported", "Linux supports Vanilla and War of the Chosen only.", AAML.Application.Common.ErrorKind.Validation)));
+        var launcher = new Mock<IExternalLauncher>();
+        using var viewModel = new SupportViewModel(session, launcher.Object, Mock.Of<IApplicationPaths>(), Mock.Of<IApplicationDiagnostics>(),
+            Mock.Of<IApplicationVersionProvider>(), Mock.Of<IApplicationUiController>(), Mock.Of<IGameLogLocator>(), locator.Object);
+
+        var result = await Execute(viewModel.OpenGameUserData);
+
+        result.Error.Should().Be("Linux supports Vanilla and War of the Chosen only.");
+        launcher.Verify(service => service.OpenDirectoryAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private static object CreateViewModel(Type type, params object[] overrides)
+    {
+        var session = overrides.OfType<ApplicationSession>().FirstOrDefault() ?? CreateSession();
         var constructor = type.GetConstructors().Single();
         var arguments = constructor.GetParameters().Select(parameter =>
             parameter.ParameterType == typeof(ApplicationSession)
@@ -173,6 +287,7 @@ public sealed class ProductionSectionTests
 
     private static object CreateMock(Type type)
     {
+        if (type == typeof(global::AAML.Avalonia.IUiDispatcher)) return new ImmediateUiDispatcher();
         if (type == typeof(ILaunchArgumentPresetService))
         {
             var repository = new Mock<ILegacyLaunchArgumentSuggestionRepository>();
@@ -182,6 +297,13 @@ public sealed class ProductionSectionTests
         }
         var mock = Activator.CreateInstance(typeof(Mock<>).MakeGenericType(type))!;
         return mock.GetType().GetProperties().Single(property => property.Name == nameof(Mock<object>.Object) && property.PropertyType == type).GetValue(mock)!;
+    }
+
+    private sealed class ImmediateUiDispatcher : global::AAML.Avalonia.IUiDispatcher
+    {
+        public void Invoke(Action action) => action();
+        public Task InvokeAsync(Action action, CancellationToken cancellationToken) { action(); return Task.CompletedTask; }
+        public Task<T> InvokeAsync<T>(Func<T> action, CancellationToken cancellationToken) => Task.FromResult(action());
     }
 
     private static async Task<Result> Execute(Zafiro.UI.Commands.IEnhancedCommand<Result> command) => await command.Execute().FirstAsync();

@@ -61,6 +61,26 @@ foreach ($item in $items) {
     }
 }
 
+$forbiddenPathsProperty = $manifest.PSObject.Properties['forbiddenPaths']
+if ($null -ne $forbiddenPathsProperty) {
+    foreach ($forbiddenPath in @($forbiddenPathsProperty.Value)) {
+        $normalizedForbiddenPath = ([string]$forbiddenPath).Replace('\', '/').Trim('/')
+        if ([string]::IsNullOrWhiteSpace($normalizedForbiddenPath) -or
+            [System.IO.Path]::IsPathRooted([string]$forbiddenPath) -or
+            $normalizedForbiddenPath -match '(^|/)\.\.(/|$)') {
+            throw "Unsafe forbidden artifact path: $forbiddenPath"
+        }
+
+        foreach ($item in $items) {
+            $relative = [System.IO.Path]::GetRelativePath($ArtifactDirectory, $item.FullName).Replace('\', '/')
+            if ($relative.Equals($normalizedForbiddenPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $relative.StartsWith($normalizedForbiddenPath + '/', [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Forbidden artifact topology is present: $normalizedForbiddenPath"
+            }
+        }
+    }
+}
+
 foreach ($relative in $manifest.required) {
     if (-not (Test-Path -LiteralPath (Join-Path $ArtifactDirectory $relative))) {
         throw "Required artifact file is missing: $relative"

@@ -20,6 +20,8 @@ public sealed class MigrationViewModel : ReactiveObject, IDisposable
     private ActiveModImportPreview? activePreview;
     private ObsoleteOverridePreview? overridePreview;
     private LegacySnapshotMigrationPreview? snapshotPreview;
+    private CancellationTokenSource? previewOperation;
+    private long previewRevision;
     private string report = "Preview a migration to inspect every proposed action. Source files are never modified.";
     private bool replaceActiveSet = true;
 
@@ -38,7 +40,25 @@ public sealed class MigrationViewModel : ReactiveObject, IDisposable
     }
 
     public string Report { get => report; private set => this.RaiseAndSetIfChanged(ref report, value); }
-    public bool ReplaceActiveSet { get => replaceActiveSet; set => this.RaiseAndSetIfChanged(ref replaceActiveSet, value); }
+    public bool ReplaceActiveSet
+    {
+        get => replaceActiveSet;
+        set
+        {
+            if (replaceActiveSet == value) return;
+            this.RaiseAndSetIfChanged(ref replaceActiveSet, value);
+            InvalidateAllPreviews();
+            Report = "Active-mod import mode changed. Preview again before confirmation.";
+        }
+    }
+    public bool CanPreviewActiveMods => session.Settings is { } settings && gameSource.SupportsActiveMods(settings.SelectedGame);
+    public bool CanPreviewModRoots => session.Settings is { } settings && gameSource.SupportsModRoots(settings.SelectedGame);
+    public bool CanPreviewOverrideCleanup => session.Settings is { } settings && gameSource.SupportsOverrideCleanup(settings.SelectedGame);
+    public string CapabilityGuidance => gameSource.Capabilities.Guidance;
+    public bool CanApplyActiveMods => activePreview is not null;
+    public bool CanApplySnapshots => snapshotPreview is not null;
+    public bool CanApplyOverrideCleanup => overridePreview is not null;
+    public bool CanApplyModRoots => rootPreview is not null;
     public IEnhancedCommand<Result> PreviewActiveMods { get; }
     public IEnhancedCommand<Result> ApplyActiveMods { get; }
     public IEnhancedCommand<Result> PreviewSnapshots { get; }
@@ -51,58 +71,85 @@ public sealed class MigrationViewModel : ReactiveObject, IDisposable
 
     private async Task<Result> PreviewActiveAsync()
     {
-        if (session.Settings is null) return Result.Failure("AAML is not initialized.");
-        var loaded = await gameSource.ReadActiveModsAsync(session.Settings.SelectedGame, session.Settings.LocationFor(session.Settings.SelectedGame).InstallationLocation, CancellationToken.None);
+        var operation = BeginPreview();
+        if (session.Settings is not { } settings) return Result.Failure("AAML is not initialized.");
+        var discovered = session.DiscoveredMods.ToArray();
+        var loaded = await gameSource.ReadActiveModsAsync(settings.SelectedGame, settings.LocationFor(settings.SelectedGame).InstallationLocation, operation.Token);
+        if (!IsCurrent(operation.Revision)) return Result.Failure("Migration inputs changed while previewing. Preview again.");
         if (!loaded.IsSuccess) return Result.Failure(loaded.Error!.Message);
-        var preview = activeImport.Preview(session.Settings.SelectedGame, ReplaceActiveSet ? ActiveModImportMode.Replace : ActiveModImportMode.Merge, loaded.Value!, session.DiscoveredMods, session.Settings);
+        var preview = activeImport.Preview(settings.SelectedGame, ReplaceActiveSet ? ActiveModImportMode.Replace : ActiveModImportMode.Merge, loaded.Value!, discovered, settings);
         if (!preview.IsSuccess) return Result.Failure(preview.Error!.Message);
-        activePreview = preview.Value; Report = activePreview!.Report; return Result.Success();
+        activePreview = preview.Value; this.RaisePropertyChanged(nameof(CanApplyActiveMods)); Report = activePreview!.Report; return Result.Success();
     }
 
     private async Task<Result> ApplyActiveAsync()
     {
         if (activePreview is null || session.Settings is null) return Result.Failure("Preview active mods before applying.");
-        var applied = await activeImport.ApplyAsync(activePreview, session.DiscoveredMods, session.Settings, CancellationToken.None);
+        var revision = previewRevision;
+        var cancellationToken = previewOperation?.Token ?? CancellationToken.None;
+        AAML.Application.Common.Result<AAML.Application.Settings.ApplicationSettings> applied;
+        try { applied = await activeImport.ApplyAsync(activePreview, session.DiscoveredMods, session.Settings, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Result.Failure("Migration inputs changed while applying. Preview again."); }
+        if (!IsCurrent(revision)) return Result.Failure("Migration inputs changed while applying. Preview again.");
         if (!applied.IsSuccess) return Result.Failure(applied.Error!.Message);
-        activePreview = null; return ToCommand(await session.AcceptMigratedSettingsAsync(applied.Value!, CancellationToken.None));
+        InvalidateAllPreviews(); return ToCommand(await session.AcceptMigratedSettingsAsync(applied.Value!, CancellationToken.None));
     }
 
     private async Task<Result> PreviewSnapshotsAsync()
     {
-        var opened = await transfer.OpenLegacySettingsAsync(CancellationToken.None);
+        var operation = BeginPreview();
+        var opened = await transfer.OpenLegacySettingsAsync(operation.Token);
+        if (!IsCurrent(operation.Revision)) return Result.Failure("Migration inputs changed while previewing. Preview again.");
         if (!opened.IsSuccess) return Result.Failure(opened.Error!.Message); if (opened.Value is null) return Result.Success();
-        var preview = await snapshots.PreviewAsync(opened.Value.Value.Path, opened.Value.Value.Contents, CancellationToken.None);
+        var preview = await snapshots.PreviewAsync(opened.Value.Value.Path, opened.Value.Value.Contents, operation.Token);
+        if (!IsCurrent(operation.Revision)) return Result.Failure("Migration inputs changed while previewing. Preview again.");
         if (!preview.IsSuccess) return Result.Failure(preview.Error!.Message);
-        snapshotPreview = preview.Value; Report = snapshotPreview!.Report; return Result.Success();
+        snapshotPreview = preview.Value; this.RaisePropertyChanged(nameof(CanApplySnapshots)); Report = snapshotPreview!.Report; return Result.Success();
     }
 
     private async Task<Result> ApplySnapshotsAsync()
     {
         if (snapshotPreview is null) return Result.Failure("Preview legacy snapshots before applying.");
-        var result = await snapshots.ApplyAsync(snapshotPreview, CancellationToken.None); if (result.IsSuccess) snapshotPreview = null; return ToCommand(result);
+        var revision = previewRevision;
+        var cancellationToken = previewOperation?.Token ?? CancellationToken.None;
+        AAML.Application.Common.Result result;
+        try { result = await snapshots.ApplyAsync(snapshotPreview, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Result.Failure("Migration inputs changed while applying. Preview again."); }
+        if (!IsCurrent(revision)) return Result.Failure("Migration inputs changed while applying. Preview again.");
+        if (result.IsSuccess) InvalidateAllPreviews(); return ToCommand(result);
     }
 
     private async Task<Result> PreviewOverrideAsync()
     {
-        if (session.Settings is null) return Result.Failure("AAML is not initialized.");
-        var preview = await gameSource.PreviewOverrideCleanupAsync(session.Settings.SelectedGame, CancellationToken.None);
+        var operation = BeginPreview();
+        if (session.Settings is not { } settings) return Result.Failure("AAML is not initialized.");
+        var preview = await gameSource.PreviewOverrideCleanupAsync(settings.SelectedGame, operation.Token);
+        if (!IsCurrent(operation.Revision)) return Result.Failure("Migration inputs changed while previewing. Preview again.");
         if (!preview.IsSuccess) return Result.Failure(preview.Error!.Message);
-        overridePreview = preview.Value; Report = overridePreview!.Report; return Result.Success();
+        overridePreview = preview.Value; this.RaisePropertyChanged(nameof(CanApplyOverrideCleanup)); Report = overridePreview!.Report; return Result.Success();
     }
 
     private async Task<Result> ApplyOverrideAsync()
     {
         if (overridePreview is null) return Result.Failure("Preview override cleanup before applying.");
-        var result = await gameSource.ApplyOverrideCleanupAsync(overridePreview, CancellationToken.None); if (result.IsSuccess) overridePreview = null; return ToCommand(result);
+        var revision = previewRevision;
+        var cancellationToken = previewOperation?.Token ?? CancellationToken.None;
+        AAML.Application.Common.Result result;
+        try { result = await gameSource.ApplyOverrideCleanupAsync(overridePreview, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Result.Failure("Migration inputs changed while applying. Preview again."); }
+        if (!IsCurrent(revision)) return Result.Failure("Migration inputs changed while applying. Preview again.");
+        if (result.IsSuccess) InvalidateAllPreviews(); return ToCommand(result);
     }
 
     private async Task<Result> PreviewModRootsAsync()
     {
-        ClearModRootPreview();
+        var operation = BeginPreview();
         if (session.Settings is not { } settings) return Result.Failure("AAML is not initialized.");
-        var preview = await gameSource.ReadModRootsAsync(settings.SelectedGame, settings.GameInstallationLocation, settings.ModRootLocations, CancellationToken.None);
+        var preview = await gameSource.ReadModRootsAsync(settings.SelectedGame, settings.GameInstallationLocation, settings.ModRootLocations, operation.Token);
+        if (!IsCurrent(operation.Revision)) return Result.Failure("Migration inputs changed while previewing. Preview again.");
         if (!preview.IsSuccess) return Result.Failure(preview.Error!.Message);
         rootPreview = preview.Value;
+        this.RaisePropertyChanged(nameof(CanApplyModRoots));
         foreach (var row in rootPreview!.Rows) ModRootRows.Add(new ModRootMigrationRowViewModel(row));
         rootGuard.Register(rootPreview);
         Report = rootPreview.Report;
@@ -114,34 +161,63 @@ public sealed class MigrationViewModel : ReactiveObject, IDisposable
     private async Task<Result> ApplyModRootsAsync()
     {
         if (rootPreview is null || session.Settings is null) return Result.Failure("Preview existing mod roots before confirming.");
+        var revision = previewRevision;
+        var cancellationToken = previewOperation?.Token ?? CancellationToken.None;
         var selected = ModRootRows.Where(row => row.IsSelected).Select(row => row.Index).ToHashSet();
-        var applied = await rootAdoption.ApplyAsync(rootPreview, selected, session.Settings, CancellationToken.None);
+        AAML.Application.Common.Result<AAML.Application.Settings.ApplicationSettings> applied;
+        try { applied = await rootAdoption.ApplyAsync(rootPreview, selected, session.Settings, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Result.Failure("Migration inputs changed while applying. Preview again."); }
+        if (!IsCurrent(revision)) return Result.Failure("Migration inputs changed while applying. Preview again.");
         if (!applied.IsSuccess) return Result.Failure(applied.Error!.Message);
-        rootGuard.Clear();
-        rootPreview = null;
-        ModRootRows.Clear();
+        InvalidateAllPreviews();
         Report = $"ModRootDirs adoption confirmed. Adopted {selected.Count:N0} selected valid root{(selected.Count == 1 ? string.Empty : "s")}; source INI unchanged.";
         return ToCommand(await session.AcceptMigratedSettingsAsync(applied.Value!, CancellationToken.None));
     }
 
     private void OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
-        if (args.PropertyName == nameof(ApplicationSession.Settings) && rootPreview is not null)
+        if (args.PropertyName == nameof(ApplicationSession.Settings))
         {
-            ClearModRootPreview();
-            Report = "Existing ModRootDirs preview cleared because the selected game or settings changed. Preview again before adoption.";
+            InvalidateAllPreviews();
+            this.RaisePropertyChanged(nameof(CanPreviewActiveMods));
+            this.RaisePropertyChanged(nameof(CanPreviewModRoots));
+            this.RaisePropertyChanged(nameof(CanPreviewOverrideCleanup));
+            Report = "Game-file migration previews were cleared because the selected game or settings changed. Preview again before confirmation.";
         }
     }
 
     private void ClearModRootPreview()
     {
         rootPreview = null;
+        this.RaisePropertyChanged(nameof(CanApplyModRoots));
         ModRootRows.Clear();
         rootGuard.Clear();
     }
 
+    private void ClearActivePreview() { activePreview = null; this.RaisePropertyChanged(nameof(CanApplyActiveMods)); }
+    private void ClearSnapshotPreview() { snapshotPreview = null; this.RaisePropertyChanged(nameof(CanApplySnapshots)); }
+    private void ClearOverridePreview() { overridePreview = null; this.RaisePropertyChanged(nameof(CanApplyOverrideCleanup)); }
+    private (long Revision, CancellationToken Token) BeginPreview()
+    {
+        InvalidateAllPreviews();
+        previewOperation = new CancellationTokenSource();
+        return (previewRevision, previewOperation.Token);
+    }
+    private bool IsCurrent(long revision) => revision == previewRevision && previewOperation?.IsCancellationRequested == false;
+    private void InvalidateAllPreviews()
+    {
+        previewRevision++;
+        previewOperation?.Cancel();
+        previewOperation?.Dispose();
+        previewOperation = null;
+        ClearActivePreview();
+        ClearSnapshotPreview();
+        ClearOverridePreview();
+        ClearModRootPreview();
+    }
+
     private static Result ToCommand(AAML.Application.Common.Result result) => result.IsSuccess ? Result.Success() : Result.Failure(result.Error!.Message);
-    public void Dispose() { session.PropertyChanged -= OnSessionPropertyChanged; ClearModRootPreview(); }
+    public void Dispose() { session.PropertyChanged -= OnSessionPropertyChanged; InvalidateAllPreviews(); }
 }
 
 public sealed class ModRootMigrationRowViewModel(ExistingModRootRow row) : ReactiveObject
