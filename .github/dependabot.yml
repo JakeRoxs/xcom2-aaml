@@ -11,6 +11,9 @@ updates:
       nuget-all:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "ReactiveUI"
+      - dependency-name: "ReactiveUI.Avalonia"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"

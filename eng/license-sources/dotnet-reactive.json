@@ -2,7 +2,10 @@
   "schemaVersion": 1,
   "sources": [
     {
-      "packageNames": ["runtimepack.Microsoft.NETCore.App.Runtime.win-x64", "runtimepack.Microsoft.NETCore.App.Runtime.linux-x64"],
+      "packageNames": [
+        "runtimepack.Microsoft.NETCore.App.Runtime.win-x64",
+        "runtimepack.Microsoft.NETCore.App.Runtime.linux-x64"
+      ],
       "versions": ["10.0.10", "10.0.11"],
       "classification": "runtime-pack",
       "spdx": "MIT",
@@ -93,7 +96,10 @@
       "notes": "The package nuspec repository commit matches the release tag; the license blob is identical to the shared .NET Foundation MIT evidence."
     },
     {
-      "packageNames": ["ReactiveUI.SourceGenerators", "ReactiveUI.SourceGenerators.Analyzers.CodeFixes"],
+      "packageNames": [
+        "ReactiveUI.SourceGenerators",
+        "ReactiveUI.SourceGenerators.Analyzers.CodeFixes"
+      ],
       "versions": ["2.6.1"],
       "classification": "build-only-development-dependency",
       "spdx": "MIT",
@@ -101,7 +107,9 @@
       "ref": "2.6.1",
       "commit": "84d74d0ec277a03c1be3e68220ccee695f204848",
       "path": "LICENSE",
-      "localFiles": ["eng/license-texts/reactiveui-sourcegenerators-license.txt"],
+      "localFiles": [
+        "eng/license-texts/reactiveui-sourcegenerators-license.txt"
+      ],
       "notes": "Both nuspecs set developmentDependency=true and point to the same commit. The exact upstream LICENSE includes the required .NET Community Toolkit and PolySharp portion notices."
     },
     {
