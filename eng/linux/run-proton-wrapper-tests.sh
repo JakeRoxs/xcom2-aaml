@@ -65,6 +65,13 @@ EXTERNAL="$WORK/External Mods Ω"
 mkdir -p "$(dirname -- "$TARGET")" "$WORKSHOP" "$EXTERNAL" \
   "$WORK/library/steamapps/compatdata/268500/pfx/drive_c/users/steamuser" \
   "$WORK/runtime/aaml/steam-launch"
+cat > "$WORK/library/steamapps/appmanifest_268500.acf" <<'MANIFEST'
+"AppState"
+{
+    "appid" "268500"
+    "installdir" "Game With Spaces Ω"
+}
+MANIFEST
 touch "$TARGET"
 chmod 700 "$WORK/runtime/aaml/steam-launch"
 python3 - "$WORK/runtime/aaml/steam-launch/request-268500.json" "$GAME" "$TARGET" "$WORKSHOP" "$EXTERNAL" <<'PY'
