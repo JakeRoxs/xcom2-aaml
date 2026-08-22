@@ -5,11 +5,22 @@ using FluentAssertions;
 using Moq;
 using ReactiveUI;
 using AAML.Application;
+using AAML.Application.Configurations;
 using AAML.Application.Diagnostics;
-using AAML.Application.Ports;
-using AAML.Application.Settings;
 using AAML.Application.Launching;
+using AAML.Application.Mods;
+using AAML.Application.Mods.Conflicts;
+using AAML.Application.Mods.Dependencies;
+using AAML.Application.Mods.Duplicates;
+using AAML.Application.Mods.Metadata;
+using AAML.Application.Mods.Workshop;
+using AAML.Application.Ports;
+using AAML.Application.Profiles;
+using AAML.Application.Settings;
+using AAML.Application.Startup;
+using AAML.Application.Updates;
 using AAML.Domain.Games;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AAML.Avalonia.Tests;
 
@@ -71,15 +82,17 @@ public sealed class ProductionSectionTests
             {
                 controller.ApplyAccessibilitySizing(textScale, iconScale);
                 foreach (var availableWidth in new[] { 620d, 760d })
-                for (var index = 0; index < ViewTypes.Length; index++)
                 {
-                    var viewType = ViewTypes[index];
-                    var view = (global::Avalonia.Controls.Control)Activator.CreateInstance(viewType)!;
-                    view.DataContext = CreateViewModel(ViewModelTypes[index]);
-                    view.Measure(new global::Avalonia.Size(availableWidth, 560));
-                    view.Arrange(new global::Avalonia.Rect(0, 0, availableWidth, 560));
-                    view.Bounds.Width.Should().Be(availableWidth);
-                    view.Bounds.Height.Should().Be(560);
+                    for (var index = 0; index < ViewTypes.Length; index++)
+                    {
+                        var viewType = ViewTypes[index];
+                        var view = (global::Avalonia.Controls.Control)Activator.CreateInstance(viewType)!;
+                        view.DataContext = CreateViewModel(ViewModelTypes[index]);
+                        view.Measure(new global::Avalonia.Size(availableWidth, 560));
+                        view.Arrange(new global::Avalonia.Rect(0, 0, availableWidth, 560));
+                        view.Bounds.Width.Should().Be(availableWidth);
+                        view.Bounds.Height.Should().Be(560);
+                    }
                 }
             }
             ((double)global::Avalonia.Application.Current.Resources["AamlBodyFontSize"]!).Should().BeApproximately(11.2d, 0.0001d);
@@ -281,13 +294,51 @@ public sealed class ProductionSectionTests
 
     private static ApplicationSession CreateSession()
     {
-        var constructor = typeof(ApplicationSession).GetConstructors().Single();
-        return (ApplicationSession)constructor.Invoke(constructor.GetParameters().Select(parameter => CreateMock(parameter.ParameterType)).ToArray());
+        var services = new ServiceCollection();
+        var requiredServiceTypes = new[]
+        {
+            typeof(ISettingsBootstrapper),
+            typeof(IModCatalogSource),
+            typeof(IGameLaunchCoordinator),
+            typeof(IGameConfigurationWriter),
+            typeof(ISteamSettingsIntegrator),
+            typeof(IModIntentService),
+            typeof(IProfileService),
+            typeof(IProfileInterchange),
+            typeof(ILegacyProfileImportService),
+            typeof(IModDependencyService),
+            typeof(IModMetadataService),
+            typeof(IModConflictService),
+            typeof(IConfigurationDocumentCatalog),
+            typeof(IWorkshopOperationCoordinator),
+            typeof(IWorkshopSubscriptionCoordinator),
+            typeof(IModRemovalFilesystem),
+            typeof(IModDuplicateAnalyzer),
+            typeof(IDuplicatePreferenceService),
+            typeof(IWorkshopService),
+            typeof(IWorkshopPreviewCache),
+            typeof(IUpdateCheckService),
+            typeof(IApplicationDiagnostics),
+            typeof(IExistingModRootPreviewGuard),
+            typeof(IUiDispatcher)
+        };
+
+        foreach (var serviceType in requiredServiceTypes)
+        {
+            var instance = serviceType == typeof(IUiDispatcher)
+                ? new ImmediateUiDispatcher()
+                : CreateMock(serviceType);
+            services.AddSingleton(serviceType, instance);
+        }
+
+        var provider = services.BuildServiceProvider();
+        return new ApplicationSession(provider);
     }
 
     private static object CreateMock(Type type)
     {
         if (type == typeof(global::AAML.Avalonia.IUiDispatcher)) return new ImmediateUiDispatcher();
+        if (type == typeof(IServiceProvider)) return new ServiceCollection().BuildServiceProvider();
         if (type == typeof(ILaunchArgumentPresetService))
         {
             var repository = new Mock<ILegacyLaunchArgumentSuggestionRepository>();

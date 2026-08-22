@@ -482,6 +482,12 @@ public sealed class LaunchArgumentPresetOptionViewModel(DashboardViewModel owner
         get => isActive;
         set
         {
+            if (!Preset.AppliesTo(owner.SelectedGame))
+            {
+                if (isActive) this.RaiseAndSetIfChanged(ref isActive, false);
+                return;
+            }
+
             if (isActive == value)
             {
                 return;

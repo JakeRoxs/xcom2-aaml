@@ -8,6 +8,7 @@ using AAML.Application.Mods.Grid;
 using AAML.Application.Mods.Conflicts;
 using AAML.Application.Mods.Dependencies;
 using AAML.Application.Mods.Duplicates;
+using AAML.Application.Mods.Metadata;
 using AAML.Application.Mods.Workshop;
 using AAML.Application.Ports;
 using AAML.Application.Profiles;
@@ -19,6 +20,7 @@ using AAML.Domain.Launching;
 using AAML.Domain.Mods;
 using AAML.Domain.Profiles;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Reactive.Bindings;
 using System.Diagnostics.CodeAnalysis;
@@ -1104,21 +1106,42 @@ public sealed class ApplicationSessionActivationTests
             WorkshopOperations = workshopOperations;
             RootGuard = new ExistingModRootPreviewGuard();
 
-            var services = new Dictionary<Type, object>
-            {
-                [typeof(ISettingsBootstrapper)] = Bootstrapper.Object, [typeof(IModCatalogSource)] = Catalog.Object,
-                [typeof(IGameLaunchCoordinator)] = LaunchCoordinator.Object, [typeof(IModIntentService)] = new ModIntentService(SettingsRepository),
-                [typeof(IProfileService)] = profiles.Object, [typeof(IModDependencyService)] = DependencyService.Object,
-                [typeof(IModConflictService)] = ConflictService.Object, [typeof(IConfigurationDocumentCatalog)] = ConfigurationCatalog.Object,
-                [typeof(IModDuplicateAnalyzer)] = new ModDuplicateAnalyzer(), [typeof(IApplicationDiagnostics)] = Diagnostics.Object,
-                [typeof(IWorkshopService)] = workshop.Object, [typeof(IWorkshopPreviewCache)] = previewCache.Object,
-                [typeof(IWorkshopOperationCoordinator)] = workshopOperations.Object,
-                [typeof(IExistingModRootPreviewGuard)] = RootGuard,
-                [typeof(IUpdateCheckService)] = UpdateChecks.Object,
-                [typeof(IUiDispatcher)] = uiDispatcher ?? new InlineUiDispatcher()
-            };
-            var constructor = typeof(ApplicationSession).GetConstructors().Single();
-            Session = (ApplicationSession)constructor.Invoke(constructor.GetParameters().Select(parameter => services.GetValueOrDefault(parameter.ParameterType) ?? MockObject(parameter.ParameterType)).ToArray());
+            var subscribe = new Mock<IWorkshopSubscriptionCoordinator>();
+            var removal = new Mock<IModRemovalFilesystem>();
+            var duplicatePrefs = new Mock<IDuplicatePreferenceService>();
+            var gameWriter = new Mock<IGameConfigurationWriter>();
+            var steamSettings = new Mock<ISteamSettingsIntegrator>();
+            var profileInterchange = new Mock<IProfileInterchange>();
+            var legacyImport = new Mock<ILegacyProfileImportService>();
+            var modDuplicateAnalyzer = new ModDuplicateAnalyzer();
+            var modMetadata = new Mock<IModMetadataService>();
+            var services = new ServiceCollection();
+            services.AddSingleton<ISettingsBootstrapper>(Bootstrapper.Object);
+            services.AddSingleton<IModCatalogSource>(Catalog.Object);
+            services.AddSingleton<IGameLaunchCoordinator>(LaunchCoordinator.Object);
+            services.AddSingleton<IGameConfigurationWriter>(gameWriter.Object);
+            services.AddSingleton<ISteamSettingsIntegrator>(steamSettings.Object);
+            services.AddSingleton<IModIntentService>(new ModIntentService(SettingsRepository));
+            services.AddSingleton<IProfileService>(profiles.Object);
+            services.AddSingleton<IProfileInterchange>(profileInterchange.Object);
+            services.AddSingleton<ILegacyProfileImportService>(legacyImport.Object);
+            services.AddSingleton<IModDependencyService>(DependencyService.Object);
+            services.AddSingleton<IModMetadataService>(modMetadata.Object);
+            services.AddSingleton<IModConflictService>(ConflictService.Object);
+            services.AddSingleton<IConfigurationDocumentCatalog>(ConfigurationCatalog.Object);
+            services.AddSingleton<IWorkshopOperationCoordinator>(workshopOperations.Object);
+            services.AddSingleton<IWorkshopSubscriptionCoordinator>(subscribe.Object);
+            services.AddSingleton<IModRemovalFilesystem>(removal.Object);
+            services.AddSingleton<IModDuplicateAnalyzer>(modDuplicateAnalyzer);
+            services.AddSingleton<IDuplicatePreferenceService>(duplicatePrefs.Object);
+            services.AddSingleton<IWorkshopService>(workshop.Object);
+            services.AddSingleton<IWorkshopPreviewCache>(previewCache.Object);
+            services.AddSingleton<IUpdateCheckService>(UpdateChecks.Object);
+            services.AddSingleton<IApplicationDiagnostics>(Diagnostics.Object);
+            services.AddSingleton<IExistingModRootPreviewGuard>(RootGuard);
+            services.AddSingleton<IUiDispatcher>(uiDispatcher ?? new InlineUiDispatcher());
+            var provider = services.BuildServiceProvider();
+            Session = new ApplicationSession(provider);
         }
 
         public ApplicationSession Session { get; }
@@ -1203,11 +1226,6 @@ public sealed class ApplicationSessionActivationTests
 
         private static Result<ModConflictReport> EmptyConflicts() => Result<ModConflictReport>.Success(new([], new HashSet<string>()));
         private static ModInstallation Installation(string location, string package) => new(new(ModSource.Manual, location), new(package), package, null, false, DescriptorState.Enabled, null);
-        private static object MockObject(Type type)
-        {
-            var mock = Activator.CreateInstance(typeof(Mock<>).MakeGenericType(type))!;
-            return mock.GetType().GetProperties().Single(property => property.Name == nameof(Mock<object>.Object) && property.PropertyType == type).GetValue(mock)!;
-        }
     }
 
     private static bool IsApproximately(double value, double target, double tolerance) => Math.Abs(value - target) <= tolerance;

@@ -400,7 +400,7 @@ public sealed class ApplicationSession(IServiceProvider serviceProvider) : React
 
     private ModProjectionEntry CreateProjectionEntry(ModInstallation mod, ModUserIntent? intent)
     {
-        var draft = modDrafts[mod.Key];
+        var draft = modDrafts.GetValueOrDefault(mod.Key) ?? new ModIntentEdit(mod.Key, intent?.IsActive ?? false, intent?.ExplicitOrder);
         var item = new ModGridItem(
             mod.Key, mod.PackageId, mod.WorkshopId, intent?.ManualName ?? mod.Name,
             draft.IsActive, intent?.IsHidden ?? false, draft.ExplicitOrder,
