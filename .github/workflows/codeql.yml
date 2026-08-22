@@ -13,8 +13,7 @@ on:
       - ".github/workflows/codeql.yml"
       - "readme.md"
       - "LICENSE"
-    paths-ignore:
-      - "xcom2-launcher/**"
+      - "!xcom2-launcher/**"
   pull_request:
     branches: ["main"]
     paths:
@@ -27,8 +26,7 @@ on:
       - ".github/workflows/codeql.yml"
       - "readme.md"
       - "LICENSE"
-    paths-ignore:
-      - "xcom2-launcher/**"
+      - "!xcom2-launcher/**"
   schedule:
     - cron: "40 4 * * 4"
 
@@ -70,7 +68,7 @@ jobs:
 
       - name: Restore AAML solution
         shell: bash
-        run: dotnet restore AAML.slnx --locked-mode
+        run: dotnet restore AAML.slnx -p:Platform="Any CPU" --locked-mode
 
       - name: Build AAML solution
         shell: bash

@@ -33,10 +33,10 @@
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="../../assets/branding/generated/png/aaml-256.png" Link="Assets/aaml-icon.png" />
-    <AvaloniaResource Include="C:\Users\Jake\source\repos\xcom2-aaml\src\AAML.Avalonia\Assets\games\game-xcom2.png" Link="Assets/games/game-xcom2.png" />
-    <AvaloniaResource Include="C:\Users\Jake\source\repos\xcom2-aaml\src\AAML.Avalonia\Assets\games\game-xcom2-wotc.png" Link="Assets/games/game-xcom2-wotc.png" />
-    <AvaloniaResource Include="C:\Users\Jake\source\repos\xcom2-aaml\src\AAML.Avalonia\Assets\games\game-xcom2-wotc-challenge.png" Link="Assets/games/game-xcom2-wotc-challenge.png" />
-    <AvaloniaResource Include="C:\Users\Jake\source\repos\xcom2-aaml\src\AAML.Avalonia\Assets\games\game-chimera.png" Link="Assets/games/game-chimera.png" />
+    <AvaloniaResource Include="Assets/games/game-xcom2.png" Link="Assets/games/game-xcom2.png" />
+    <AvaloniaResource Include="Assets/games/game-xcom2-wotc.png" Link="Assets/games/game-xcom2-wotc.png" />
+    <AvaloniaResource Include="Assets/games/game-xcom2-wotc-challenge.png" Link="Assets/games/game-xcom2-wotc-challenge.png" />
+    <AvaloniaResource Include="Assets/games/game-chimera.png" Link="Assets/games/game-chimera.png" />
     <PackageReference Include="Avalonia" Version="12.1.1" />
     <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
