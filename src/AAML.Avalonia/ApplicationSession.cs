@@ -228,9 +228,9 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         return Result<ApplicationSettings>.Success(result.Value!.Settings);
     }
 
-    public void DiscardModsOwnedDrafts()
+    public async Task DiscardModsOwnedDraftsAsync(CancellationToken cancellationToken)
     {
-        autoSave.Cancel(ModsAutoSaveOwner);
+        await autoSave.CancelAndWaitAsync(ModsAutoSaveOwner, cancellationToken);
         modDraftRevision++;
         ResetDraftsFromSettings();
         var grid = Settings?.ModGrid ?? ModGridPreferences.Default;

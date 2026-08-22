@@ -13,6 +13,16 @@ internal static class Program
         TaskScheduler.UnobservedTaskException += (_, eventArgs) => { FatalErrorCoordinator.RecordNonFatal(eventArgs.Exception, "task-unobserved"); eventArgs.SetObserved(); };
         try
         {
+            var startup = CommandLineStartupParser.Parse(args);
+            if (startup.Mode != CommandLineStartupMode.Desktop)
+            {
+                using var cancellation = new CancellationTokenSource();
+                ConsoleCancelEventHandler handler = (_, eventArgs) => { eventArgs.Cancel = true; cancellation.Cancel(); };
+                Console.CancelKeyPress += handler;
+                try { return CommandLineUiActionRegistry.CreateDispatcher().RunAsync(startup, Console.Out, Console.Error, cancellation.Token).GetAwaiter().GetResult(); }
+                finally { Console.CancelKeyPress -= handler; }
+            }
+
             Dispatcher.UIThread.UnhandledException += (_, eventArgs) => { eventArgs.Handled = true; FatalErrorCoordinator.Handle(eventArgs.Exception, "avalonia-dispatcher", true); };
             return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }

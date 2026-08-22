@@ -50,7 +50,7 @@ public sealed class LinuxGameConfigurationWriter(IAtomicTextWriter writer) : IGa
     }
 }
 
-internal sealed record LinuxSteamGameLayout(string GameInstallPath, string TargetExecutablePath, string SteamAppsPath, string PrefixPath, string WineUser, string UserDataDirectory, string ConfigurationDirectory)
+internal sealed record LinuxSteamGameLayout(string GameInstallPath, string TargetExecutablePath, string SteamAppsPath, string PrefixPath, string WineUser, string UserDataDirectory, string ConfigurationDirectory, IReadOnlyList<LinuxArtifactCaseFallback> CaseFallbacks)
 {
     public static Result<LinuxSteamGameLayout> Resolve(string gameInstallPath, GameVariant variant)
     {
@@ -60,7 +60,7 @@ internal sealed record LinuxSteamGameLayout(string GameInstallPath, string Targe
             if (!Directory.Exists(game)) return Failure("launch.installation_missing", "The selected game installation does not exist.", ErrorKind.NotFound);
             var common = Directory.GetParent(game);
             var steamApps = common?.Parent;
-            if (common is null || steamApps is null || !common.Name.Equals("common", StringComparison.Ordinal) || !steamApps.Name.Equals("steamapps", StringComparison.Ordinal))
+            if (common is null || steamApps is null || !common.Name.Equals("common", StringComparison.OrdinalIgnoreCase) || !steamApps.Name.Equals("steamapps", StringComparison.OrdinalIgnoreCase))
                 return Failure("launch.steam_layout_invalid", "The game installation is not beneath a Steam steamapps/common directory.", ErrorKind.Validation);
             var appId = AAML.Domain.Games.GameVariantPolicy.GetSteamAppId(variant).ToString(System.Globalization.CultureInfo.InvariantCulture);
             var manifest = Path.Combine(steamApps.FullName, $"appmanifest_{appId}.acf");
@@ -72,23 +72,40 @@ internal sealed record LinuxSteamGameLayout(string GameInstallPath, string Targe
                 string.IsNullOrWhiteSpace(installDirectory) || Path.IsPathRooted(installDirectory) || installDirectory.Contains("..", StringComparison.Ordinal))
                 return Failure("launch.steam_manifest_invalid", "The Steam application manifest does not identify a safe matching installation.", ErrorKind.InvalidData);
             var physical = new LinuxPhysicalPathResolver();
+            var knownArtifacts = new LinuxKnownArtifactResolver(physical);
             var selectedPhysical = physical.ResolveExisting(game);
-            var manifestPhysical = physical.ResolveExisting(Path.Combine(common.FullName, installDirectory));
-            if (!selectedPhysical.IsSuccess || !manifestPhysical.IsSuccess || !string.Equals(selectedPhysical.Value, manifestPhysical.Value, StringComparison.Ordinal))
+            var installComponents = installDirectory.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (installComponents.Length == 0) return Failure("launch.steam_manifest_invalid", "The Steam application manifest install directory has no path components.", ErrorKind.InvalidData);
+            var manifestInstall = knownArtifacts.ResolveExistingDirectory(common.FullName, installComponents);
+            if (!manifestInstall.IsSuccess) return KnownArtifactFailure("launch.steam_manifest_mismatch", "The manifest installation could not be resolved", manifestInstall.Error!);
+            if (!selectedPhysical.IsSuccess || !string.Equals(selectedPhysical.Value, manifestInstall.Value!.Path, StringComparison.Ordinal))
                 return Failure("launch.steam_manifest_mismatch", "The selected installation does not physically match the Steam application manifest.", ErrorKind.Conflict);
-            var prefix = Path.Combine(steamApps.FullName, "compatdata", appId, "pfx");
-            var users = Path.Combine(prefix, "drive_c", "users");
-            if (!Directory.Exists(users)) return Failure("launch.proton_prefix_missing", "The Proton prefix has no Windows users directory.", ErrorKind.NotFound);
-            var candidates = Directory.EnumerateDirectories(users).Select(Path.GetFileName).Where(name => name is not null && !name.Equals("Public", StringComparison.OrdinalIgnoreCase) && !name.Equals("Default", StringComparison.OrdinalIgnoreCase)).Cast<string>().ToArray();
-            var wineUser = candidates.FirstOrDefault(name => name.Equals("steamuser", StringComparison.OrdinalIgnoreCase)) ?? (candidates.Length == 1 ? candidates[0] : null);
-            if (wineUser is null) return Failure("launch.proton_user_ambiguous", "The Proton prefix Windows user could not be selected unambiguously.", ErrorKind.Conflict);
-            var variantRoot = variant == GameVariant.XCom2 ? game : Path.Combine(game, "XCom2-WarOfTheChosen");
-            var target = Path.Combine(variantRoot, "Binaries", "Win64", "XCom2.exe");
-            if (!File.Exists(target)) return Failure("launch.executable_missing", $"The selected game executable does not exist: {target}", ErrorKind.NotFound);
+            var prefix = knownArtifacts.ResolveExistingDirectory(steamApps.FullName, "compatdata", appId, "pfx");
+            if (!prefix.IsSuccess) return KnownArtifactFailure("launch.proton_prefix_missing", "The Proton prefix could not be resolved", prefix.Error!);
+            var users = knownArtifacts.ResolveExistingDirectory(prefix.Value!.Path, "drive_c", "users");
+            if (!users.IsSuccess) return KnownArtifactFailure("launch.proton_prefix_missing", "The Proton prefix has no resolvable Windows users directory", users.Error!);
+            var candidates = Directory.EnumerateDirectories(users.Value!.Path).Select(Path.GetFileName).Where(name => name is not null && !name.Equals("Public", StringComparison.OrdinalIgnoreCase) && !name.Equals("Default", StringComparison.OrdinalIgnoreCase)).Cast<string>().ToArray();
+            var steamUsers = candidates.Where(name => name.Equals("steamuser", StringComparison.OrdinalIgnoreCase)).ToArray();
+            var wineUser = steamUsers.Length == 1 ? steamUsers[0] : steamUsers.Length == 0 && candidates.Length == 1 ? candidates[0] : null;
+            if (wineUser is null) return Failure("launch.proton_user_ambiguous", $"The Proton prefix Windows user could not be selected unambiguously: {string.Join(", ", candidates.Order(StringComparer.Ordinal))}", ErrorKind.Conflict);
+            var wineUserPath = knownArtifacts.ResolveExistingDirectory(users.Value.Path, wineUser);
+            if (!wineUserPath.IsSuccess) return KnownArtifactFailure("launch.proton_user_invalid", "The Proton Windows user directory could not be resolved", wineUserPath.Error!);
+            var targetComponents = variant == GameVariant.XCom2
+                ? new[] { "Binaries", "Win64", "XCom2.exe" }
+                : ["XCom2-WarOfTheChosen", "Binaries", "Win64", "XCom2.exe"];
+            var target = knownArtifacts.ResolveExistingFile(game, targetComponents);
+            if (!target.IsSuccess) return KnownArtifactFailure("launch.executable_missing", "The selected game executable could not be resolved", target.Error!);
             var gameFolder = variant == GameVariant.XCom2 ? "XCOM2" : "XCOM2 War of the Chosen";
-            var userData = Path.Combine(users, wineUser, "Documents", "My Games", gameFolder);
-            var config = Path.Combine(userData, "XComGame", "Config");
-            return Result<LinuxSteamGameLayout>.Success(new LinuxSteamGameLayout(game, target, steamApps.FullName, prefix, wineUser, userData, config));
+            var userData = knownArtifacts.ResolveDirectoryExistingOrExpected(wineUserPath.Value!.Path, "Documents", "My Games", gameFolder);
+            if (!userData.IsSuccess) return KnownArtifactFailure("launch.user_data_invalid", "The game user-data path could not be resolved", userData.Error!);
+            var config = userData.Value!.Exists
+                ? knownArtifacts.ResolveDirectoryExistingOrExpected(userData.Value.Path, "XComGame", "Config")
+                : Result<LinuxKnownArtifactPath>.Success(new(Path.Combine(userData.Value.Path, "XComGame", "Config"), false, []));
+            if (!config.IsSuccess) return KnownArtifactFailure("launch.configuration_path_invalid", "The game configuration path could not be resolved", config.Error!);
+            var fallbacks = manifestInstall.Value.CaseFallbacks.Concat(prefix.Value.CaseFallbacks).Concat(users.Value.CaseFallbacks).Concat(wineUserPath.Value.CaseFallbacks)
+                .Concat(target.Value!.CaseFallbacks).Concat(userData.Value.CaseFallbacks).Concat(config.Value!.CaseFallbacks).ToArray();
+            return Result<LinuxSteamGameLayout>.Success(new LinuxSteamGameLayout(selectedPhysical.Value!, target.Value.Path, steamApps.FullName,
+                prefix.Value.Path, wineUser, userData.Value.Path, config.Value.Path, fallbacks));
         }
         catch (FormatException exception)
         {
@@ -101,4 +118,7 @@ internal sealed record LinuxSteamGameLayout(string GameInstallPath, string Targe
     }
 
     private static Result<LinuxSteamGameLayout> Failure(string code, string message, ErrorKind kind) => Result<LinuxSteamGameLayout>.Failure(new Error(code, message, kind));
+    private static Result<LinuxSteamGameLayout> KnownArtifactFailure(string missingCode, string context, Error error) =>
+        Failure(error.Code is "path.known_artifact_case_ambiguous" or "path.known_artifact_outside_root" ? error.Code : missingCode,
+            $"{context}: {error.Message}", error.Kind);
 }

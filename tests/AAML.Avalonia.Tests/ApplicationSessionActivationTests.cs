@@ -338,7 +338,7 @@ public sealed class ApplicationSessionActivationTests
         await fixture.Session.InitializeAsync(TestContext.CancellationToken);
         fixture.Session.ModRows.Single(item => item.Key == fixture.First.Key).IsActive = true;
 
-        fixture.Session.DiscardModsOwnedDrafts();
+        await fixture.Session.DiscardModsOwnedDraftsAsync(TestContext.CancellationToken);
         await Task.Delay(550, TestContext.CancellationToken);
 
         fixture.SettingsRepository.SaveCount.Should().Be(0);
@@ -355,7 +355,7 @@ public sealed class ApplicationSessionActivationTests
         fixture.Session.ModRows.Single(item => item.Key == fixture.First.Key).IsActive = true;
         await fixture.SettingsRepository.SaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(3), TestContext.CancellationToken);
 
-        fixture.Session.DiscardModsOwnedDrafts();
+        await fixture.Session.DiscardModsOwnedDraftsAsync(TestContext.CancellationToken);
         await Task.Delay(100, TestContext.CancellationToken);
 
         fixture.SettingsRepository.Saved.Should().BeNull();
@@ -375,7 +375,7 @@ public sealed class ApplicationSessionActivationTests
         fixture.Session.ModRows.Single(item => item.Key == fixture.Second.Key).IsActive = true;
         await Task.Delay(550, TestContext.CancellationToken);
 
-        fixture.Session.DiscardModsOwnedDrafts();
+        await fixture.Session.DiscardModsOwnedDraftsAsync(TestContext.CancellationToken);
         release.TrySetResult();
         await Task.Delay(100, TestContext.CancellationToken);
 

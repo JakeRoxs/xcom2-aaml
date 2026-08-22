@@ -68,7 +68,7 @@ public sealed class ModsViewModel : ReactiveObject, IDisposable
         BulkRemoveTags = ReactiveCommand.CreateFromTask(BulkRemoveTagsAsync).Enhance(text: "Remove tags", name: "BulkRemoveTags");
         ClearCategory = ReactiveCommand.Create(() => { SelectedCategory = null; return Result.Success(); }).Enhance(text: "Clear category", name: "ClearCategory");
         ClearFocusedMods = ReactiveCommand.Create(() => { session.ClearFocusedMods(); return Result.Success(); }).Enhance(text: "Clear conflict filter", name: "ClearFocusedMods");
-        DiscardChanges = ReactiveCommand.Create(() => { session.DiscardModsOwnedDrafts(); LoadGridPreferences(); return Result.Success(); }).Enhance(text: "Discard mod and view edits", name: "DiscardChanges");
+        DiscardChanges = ReactiveCommand.CreateFromTask(async () => { await session.DiscardModsOwnedDraftsAsync(CancellationToken.None); LoadGridPreferences(); return Result.Success(); }).Enhance(text: "Discard mod and view edits", name: "DiscardChanges");
         RefreshWorkshop = ReactiveCommand.CreateFromTask(RefreshWorkshopAsync).Enhance(text: "Refresh Workshop", name: "RefreshWorkshop");
         UpdateSelected = ReactiveCommand.CreateFromTask(UpdateSelectedAsync).Enhance(text: "Update selected", name: "UpdateSelectedMods");
         StopMonitoring = ReactiveCommand.Create(() => { workshopCancellation?.Cancel(); return Result.Success(); }).Enhance(text: "Stop monitoring", name: "StopWorkshopMonitoring");

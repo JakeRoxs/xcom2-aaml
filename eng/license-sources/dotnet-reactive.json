@@ -17,14 +17,14 @@
     },
     {
       "packagePatterns": ["Microsoft.Extensions.*"],
-      "versions": ["9.0.10", "10.0.10"],
+      "versions": ["9.0.10", "10.0.10", "10.0.11"],
       "classification": "runtime-library",
       "spdx": "MIT",
       "repository": "https://github.com/dotnet/runtime",
-      "ref": "v9.0.10 and v10.0.10",
+      "ref": "v9.0.10, v10.0.10, and v10.0.11",
       "path": "LICENSE.TXT",
       "localFiles": ["eng/license-texts/dotnet-foundation-mit.txt"],
-      "notes": "The exact .NET runtime MIT license applies to the restored Microsoft.Extensions 9.0.10 and 10.0.10 packages. The wildcard is intentionally limited to Microsoft.Extensions packages."
+      "notes": "The exact .NET runtime MIT license applies to the restored Microsoft.Extensions 9.0.10, 10.0.10, and 10.0.11 packages. The wildcard is intentionally limited to Microsoft.Extensions packages."
     },
     {
       "packageNames": ["System.ComponentModel.Annotations"],

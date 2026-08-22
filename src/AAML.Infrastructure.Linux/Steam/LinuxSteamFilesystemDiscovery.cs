@@ -11,8 +11,13 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
 {
     private readonly LinuxPathSemantics semantics = new();
     private readonly IPhysicalPathResolver physical;
+    private readonly LinuxKnownArtifactResolver knownArtifacts;
 
-    public LinuxSteamFilesystemDiscovery(IPhysicalPathResolver physical) => this.physical = physical;
+    public LinuxSteamFilesystemDiscovery(IPhysicalPathResolver physical)
+    {
+        this.physical = physical;
+        knownArtifacts = new LinuxKnownArtifactResolver(physical);
+    }
 
     public Task<Result<SteamGameDiscovery>> DiscoverAsync(SteamDiscoveryRequest request, CancellationToken cancellationToken)
     {
@@ -23,16 +28,29 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
         try
         {
             var roots = CandidateRoots(request.CandidateSteamRoots).Distinct(StringComparer.Ordinal).ToArray();
-            var installations = roots.Where(Directory.Exists).Select(CreateInstallation).ToArray();
-            if (installations.Length == 0)
+            var installations = new List<SteamInstallation>();
+            foreach (var root in roots.Where(Directory.Exists))
+            {
+                var installation = CreateInstallation(root);
+                if (!installation.IsSuccess) return Task.FromResult(Failure(installation.Error!.Code, installation.Error.Message, installation.Error.Kind));
+                installations.Add(installation.Value!);
+            }
+            if (installations.Count == 0)
                 return Task.FromResult(Failure("steam.no_installation_found", "No Steam installation was found.", ErrorKind.NotFound));
             var libraries = new List<SteamLibrary>();
             foreach (var installation in installations)
             {
-                libraries.Add(CreateLibrary(installation.RootPath, null, SteamLibrarySource.Root));
+                var rootLibrary = CreateLibrary(installation.RootPath, null, SteamLibrarySource.Root);
+                if (!rootLibrary.IsSuccess) return Task.FromResult(Failure(rootLibrary.Error!.Code, rootLibrary.Error.Message, rootLibrary.Error.Kind));
+                libraries.Add(rootLibrary.Value!);
                 var vdf = Path.Combine(installation.SteamAppsPath, "libraryfolders.vdf");
                 if (!File.Exists(vdf)) continue;
-                foreach (var entry in ReadLibraries(vdf)) libraries.Add(CreateLibrary(entry.Path, entry.Index, SteamLibrarySource.LibraryFoldersVdf));
+                foreach (var entry in ReadLibraries(vdf))
+                {
+                    var library = CreateLibrary(entry.Path, entry.Index, SteamLibrarySource.LibraryFoldersVdf);
+                    if (!library.IsSuccess) return Task.FromResult(Failure(library.Error!.Code, library.Error.Message, library.Error.Kind));
+                    libraries.Add(library.Value!);
+                }
             }
 
             var uniqueLibraries = libraries.GroupBy(library => library.PhysicalRootPath ?? library.RootPath, StringComparer.Ordinal).Select(group => group.OrderBy(library => library.Source).First()).ToArray();
@@ -41,6 +59,7 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
         }
         catch (OperationCanceledException) { return Task.FromResult(Failure("steam.discovery_cancelled", "Steam discovery was cancelled.", ErrorKind.Cancelled)); }
         catch (FormatException exception) { return Task.FromResult(Failure("steam.library_file_invalid", exception.Message, ErrorKind.InvalidData)); }
+        catch (UnauthorizedAccessException exception) { return Task.FromResult(Failure("steam.discovery_unauthorized", exception.Message, ErrorKind.Unauthorized)); }
         catch (IOException exception) { return Task.FromResult(Failure("steam.discovery_io", exception.Message, ErrorKind.Io)); }
     }
 
@@ -71,14 +90,33 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
                 diagnostics.Add(new DiscoveryDiagnostic("steam.install_dir_invalid", ErrorKind.InvalidData, "Manifest install directory is not a safe relative path", new Dictionary<string, string> { ["path"] = manifest }));
                 continue;
             }
-            var gamePath = Path.Combine(library.CommonPath, installDirectory);
-            applications.Add(new SteamInstalledApplication(appId, library.RootPath, manifest, installDirectory, gamePath, fields.GetValueOrDefault("name"), fields.GetValueOrDefault("StateFlags"), true, Directory.Exists(gamePath)));
-            var contentRoot = Path.Combine(library.WorkshopPath, "content", appId.Value.ToString(CultureInfo.InvariantCulture));
-            workshops.Add(new SteamWorkshopLocation(appId, library.RootPath, contentRoot, Directory.Exists(contentRoot) ? Directory.EnumerateDirectories(contentRoot).Where(path => ulong.TryParse(Path.GetFileName(path), out _)).Order(StringComparer.Ordinal).ToArray() : []));
-            var compat = Path.Combine(library.CompatDataPath, appId.Value.ToString(CultureInfo.InvariantCulture));
-            var prefix = Path.Combine(compat, "pfx");
-            var users = Directory.Exists(prefix) && Directory.Exists(Path.Combine(prefix, "drive_c", "users")) ? Directory.EnumerateDirectories(Path.Combine(prefix, "drive_c", "users")).Select(Path.GetFileName).Where(name => name is not null).Cast<string>().Order(StringComparer.Ordinal).ToArray() : [];
-            prefixes.Add(new ProtonPrefix(appId, library.RootPath, compat, prefix, Directory.Exists(prefix) ? physical.ResolveExisting(prefix).Value : null, Directory.Exists(prefix), Directory.Exists(Path.Combine(prefix, "drive_c")), users));
+            var expectedGamePath = Path.Combine(library.CommonPath, installDirectory);
+            var installComponents = installDirectory.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (installComponents.Length == 0)
+            {
+                diagnostics.Add(new DiscoveryDiagnostic("steam.install_dir_invalid", ErrorKind.InvalidData, "Manifest install directory has no path components", new Dictionary<string, string> { ["path"] = manifest }));
+                continue;
+            }
+            var resolvedGame = knownArtifacts.ResolveExistingDirectory(library.CommonPath, installComponents);
+            var gamePath = resolvedGame.IsSuccess ? resolvedGame.Value!.Path : expectedGamePath;
+            if (!resolvedGame.IsSuccess && resolvedGame.Error!.Code != "path.known_artifact_missing")
+                diagnostics.Add(new DiscoveryDiagnostic(resolvedGame.Error.Code, resolvedGame.Error.Kind, resolvedGame.Error.Message,
+                    new Dictionary<string, string> { ["appId"] = appId.Value.ToString(CultureInfo.InvariantCulture), ["path"] = expectedGamePath }));
+            applications.Add(new SteamInstalledApplication(appId, library.RootPath, manifest, installDirectory, gamePath, fields.GetValueOrDefault("name"), fields.GetValueOrDefault("StateFlags"), true, resolvedGame.IsSuccess));
+            var contentRoot = ResolveKnownDirectoryOrExpected(library.WorkshopPath, "content", appId.Value.ToString(CultureInfo.InvariantCulture));
+            if (contentRoot.IsSuccess)
+                workshops.Add(new SteamWorkshopLocation(appId, library.RootPath, contentRoot.Value!, Directory.Exists(contentRoot.Value) ? Directory.EnumerateDirectories(contentRoot.Value).Where(path => ulong.TryParse(Path.GetFileName(path), out _)).Order(StringComparer.Ordinal).ToArray() : []));
+            else diagnostics.Add(ToDiagnostic(contentRoot.Error!, appId, library.WorkshopPath));
+            var compat = ResolveKnownDirectoryOrExpected(library.CompatDataPath, appId.Value.ToString(CultureInfo.InvariantCulture));
+            if (!compat.IsSuccess) { diagnostics.Add(ToDiagnostic(compat.Error!, appId, library.CompatDataPath)); continue; }
+            var prefix = ResolveKnownDirectoryOrExpected(compat.Value!, "pfx");
+            if (!prefix.IsSuccess) { diagnostics.Add(ToDiagnostic(prefix.Error!, appId, compat.Value!)); continue; }
+            var driveC = ResolveKnownDirectoryOrExpected(prefix.Value!, "drive_c");
+            if (!driveC.IsSuccess) { diagnostics.Add(ToDiagnostic(driveC.Error!, appId, prefix.Value!)); continue; }
+            var usersPath = ResolveKnownDirectoryOrExpected(driveC.Value!, "users");
+            if (!usersPath.IsSuccess) { diagnostics.Add(ToDiagnostic(usersPath.Error!, appId, driveC.Value!)); continue; }
+            var users = Directory.Exists(usersPath.Value) ? Directory.EnumerateDirectories(usersPath.Value).Select(Path.GetFileName).Where(name => name is not null).Cast<string>().Order(StringComparer.Ordinal).ToArray() : [];
+            prefixes.Add(new ProtonPrefix(appId, library.RootPath, compat.Value!, prefix.Value!, Directory.Exists(prefix.Value) ? physical.ResolveExisting(prefix.Value).Value : null, Directory.Exists(prefix.Value), Directory.Exists(driveC.Value), users));
         }
         var installed = applications.Where(application => application.InstallDirectoryExists).ToArray();
         if (installed.Length > 1)
@@ -91,18 +129,30 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
         return new SteamGameDiscovery(appId, installations, libraries, applications, workshops, prefixes, [], diagnostics);
     }
 
-    private SteamInstallation CreateInstallation(string root)
+    private Result<SteamInstallation> CreateInstallation(string root)
     {
         var physicalRoot = physical.ResolveExisting(root).IsSuccess ? physical.ResolveExisting(root).Value : null;
         var kind = root.Contains(".var/app/com.valvesoftware.Steam", StringComparison.Ordinal) ? SteamInstallationKind.Flatpak : SteamInstallationKind.Native;
-        return new SteamInstallation(root, physicalRoot, kind, Path.Combine(root, "steamapps"), Path.Combine(root, "userdata"));
+        var steamApps = ResolveKnownDirectoryOrExpected(root, "steamapps");
+        if (!steamApps.IsSuccess) return Result<SteamInstallation>.Failure(steamApps.Error!);
+        var userData = ResolveKnownDirectoryOrExpected(root, "userdata");
+        if (!userData.IsSuccess) return Result<SteamInstallation>.Failure(userData.Error!);
+        return Result<SteamInstallation>.Success(new(root, physicalRoot, kind, steamApps.Value!, userData.Value));
     }
 
-    private SteamLibrary CreateLibrary(string root, int? index, SteamLibrarySource source)
+    private Result<SteamLibrary> CreateLibrary(string root, int? index, SteamLibrarySource source)
     {
         var normalized = semantics.NormalizeIdentity(root).Value!;
         var resolved = physical.ResolveExisting(normalized);
-        return new SteamLibrary(normalized, resolved.IsSuccess ? resolved.Value : null, normalized + "/steamapps", normalized + "/steamapps/common", normalized + "/steamapps/workshop", normalized + "/steamapps/compatdata", index, source);
+        var steamApps = ResolveKnownDirectoryOrExpected(normalized, "steamapps");
+        if (!steamApps.IsSuccess) return Result<SteamLibrary>.Failure(steamApps.Error!);
+        var common = ResolveKnownDirectoryOrExpected(steamApps.Value!, "common");
+        var workshop = ResolveKnownDirectoryOrExpected(steamApps.Value!, "workshop");
+        var compatData = ResolveKnownDirectoryOrExpected(steamApps.Value!, "compatdata");
+        var error = new[] { common, workshop, compatData }.FirstOrDefault(result => !result.IsSuccess).Error;
+        return error is not null
+            ? Result<SteamLibrary>.Failure(error)
+            : Result<SteamLibrary>.Success(new(normalized, resolved.IsSuccess ? resolved.Value : null, steamApps.Value!, common.Value!, workshop.Value!, compatData.Value!, index, source));
     }
 
     private IEnumerable<(int Index, string Path)> ReadLibraries(string path)
@@ -116,6 +166,15 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
     }
 
     private Dictionary<string, string> ReadFields(string path) => ValveKeyValueParser.Parse(File.ReadAllText(path)).SelectMany(entry => entry.Children).Where(entry => entry.Value is not null).GroupBy(entry => entry.Key, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Last().Value!, StringComparer.Ordinal);
+
+    private Result<string> ResolveKnownDirectoryOrExpected(string root, params string[] components)
+    {
+        var resolved = knownArtifacts.ResolveDirectoryExistingOrExpected(root, components);
+        return resolved.IsSuccess ? Result<string>.Success(resolved.Value!.Path) : Result<string>.Failure(resolved.Error!);
+    }
+
+    private static DiscoveryDiagnostic ToDiagnostic(Error error, SteamAppId appId, string path) => new(error.Code, error.Kind, error.Message,
+        new Dictionary<string, string> { ["appId"] = appId.Value.ToString(CultureInfo.InvariantCulture), ["path"] = path });
 
     private IEnumerable<string> CandidateRoots(IReadOnlyList<string>? explicitRoots)
     {
