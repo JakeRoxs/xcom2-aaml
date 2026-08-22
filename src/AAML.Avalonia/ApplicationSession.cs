@@ -21,14 +21,43 @@ using ReactiveUI;
 using AAML.Application.Updates;
 using AAML.Application.Diagnostics;
 using AAML.Application.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AAML.Avalonia;
 
-public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModCatalogSource catalog, IGameLaunchCoordinator launchCoordinator, IGameConfigurationWriter configurationWriter, ISteamSettingsIntegrator steamSettings, IModIntentService modIntents, IProfileService profileService, IProfileInterchange profileInterchange, ILegacyProfileImportService legacyProfileImport, IModDependencyService dependencies, IModMetadataService metadataService, IModConflictService conflictService, IConfigurationDocumentCatalog configurationCatalog, IWorkshopOperationCoordinator workshopOperations, IWorkshopSubscriptionCoordinator subscriptions, IModRemovalFilesystem removalFilesystem, IModDuplicateAnalyzer duplicateAnalyzer, IDuplicatePreferenceService duplicatePreferences, IWorkshopService workshopService, IWorkshopPreviewCache workshopPreviewCache, IUpdateCheckService updateChecks, IApplicationDiagnostics diagnostics, IExistingModRootPreviewGuard modRootPreviewGuard, IUiDispatcher uiDispatcher) : ReactiveObject, IDisposable
+public sealed class ApplicationSession(IServiceProvider serviceProvider) : ReactiveObject, IDisposable
 {
+    private readonly ISettingsBootstrapper bootstrapper = serviceProvider.GetRequiredService<ISettingsBootstrapper>();
+    private readonly IModCatalogSource catalog = serviceProvider.GetRequiredService<IModCatalogSource>();
+    private readonly IGameLaunchCoordinator launchCoordinator = serviceProvider.GetRequiredService<IGameLaunchCoordinator>();
+    private readonly IGameConfigurationWriter configurationWriter = serviceProvider.GetRequiredService<IGameConfigurationWriter>();
+    private readonly ISteamSettingsIntegrator steamSettings = serviceProvider.GetRequiredService<ISteamSettingsIntegrator>();
+    private readonly IModIntentService modIntents = serviceProvider.GetRequiredService<IModIntentService>();
+    private readonly IProfileService profileService = serviceProvider.GetRequiredService<IProfileService>();
+    private readonly IProfileInterchange profileInterchange = serviceProvider.GetRequiredService<IProfileInterchange>();
+    private readonly ILegacyProfileImportService legacyProfileImport = serviceProvider.GetRequiredService<ILegacyProfileImportService>();
+    private readonly IModDependencyService dependencies = serviceProvider.GetRequiredService<IModDependencyService>();
+    private readonly IModMetadataService metadataService = serviceProvider.GetRequiredService<IModMetadataService>();
+    private readonly IModConflictService conflictService = serviceProvider.GetRequiredService<IModConflictService>();
+    private readonly IConfigurationDocumentCatalog configurationCatalog = serviceProvider.GetRequiredService<IConfigurationDocumentCatalog>();
+    private readonly IWorkshopOperationCoordinator workshopOperations = serviceProvider.GetRequiredService<IWorkshopOperationCoordinator>();
+    private readonly IWorkshopSubscriptionCoordinator subscriptions = serviceProvider.GetRequiredService<IWorkshopSubscriptionCoordinator>();
+    private readonly IModRemovalFilesystem removalFilesystem = serviceProvider.GetRequiredService<IModRemovalFilesystem>();
+    private readonly IModDuplicateAnalyzer duplicateAnalyzer = serviceProvider.GetRequiredService<IModDuplicateAnalyzer>();
+    private readonly IDuplicatePreferenceService duplicatePreferences = serviceProvider.GetRequiredService<IDuplicatePreferenceService>();
+    private readonly IWorkshopService workshopService = serviceProvider.GetRequiredService<IWorkshopService>();
+    private readonly IWorkshopPreviewCache workshopPreviewCache = serviceProvider.GetRequiredService<IWorkshopPreviewCache>();
+    private readonly IUpdateCheckService updateChecks = serviceProvider.GetRequiredService<IUpdateCheckService>();
+    private readonly IApplicationDiagnostics diagnostics = serviceProvider.GetRequiredService<IApplicationDiagnostics>();
+    private readonly IExistingModRootPreviewGuard modRootPreviewGuard = serviceProvider.GetRequiredService<IExistingModRootPreviewGuard>();
+    private readonly IUiDispatcher uiDispatcher = serviceProvider.GetRequiredService<IUiDispatcher>();
+
     private const string ModsAutoSaveOwner = "mods";
+    private const string SessionNotInitializedCode = "session.not_initialized";
+    private const string SessionNotInitializedMessage = "AAML is not initialized.";
     private readonly SemaphoreSlim initialization = new(1, 1);
     private readonly SemaphoreSlim workshopGate = new(1, 1);
+    private readonly SemaphoreSlim modRefreshGate = new(1, 1);
     private readonly AutoSaveCoordinator autoSave = new();
     private long modDraftRevision;
     private long modGridRevision;
@@ -47,6 +76,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     private WorkshopAvailability workshopAvailability = WorkshopAvailability.Unknown;
     private SessionUpdateCheck? updateCheck;
     private long updateCheckRevision;
+    private long workshopProgressRevision;
     private ModDuplicateReport duplicateReport = new([], new Dictionary<ModKey, DuplicateStatus>());
     private IReadOnlySet<ModKey> focusedModKeys = new HashSet<ModKey>();
     private string modSearchText = string.Empty;
@@ -54,6 +84,13 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     private bool includeHidden = true;
     private ModGridSemanticState? modStateFilter;
     private readonly HashSet<ModGridGroupKey> collapsedModGroups = [];
+    private ModProjectionStore? modProjectionStore;
+    private static IReadOnlySet<TagId> EmptyTagIds { get; } = new HashSet<TagId>();
+
+    private static Error NotInitializedError() => new(SessionNotInitializedCode, SessionNotInitializedMessage, ErrorKind.Unavailable);
+    private static Result NotInitializedFailure() => Result.Failure(NotInitializedError());
+    private static Result<T> NotInitializedFailure<T>() => Result<T>.Failure(NotInitializedError());
+    private static Result<GameLaunchOutcome> NotInitializedGameLaunchFailure() => Result<GameLaunchOutcome>.Failure(NotInitializedError());
 
     public void RegisterAutoSaveOwner(string owner, Func<bool> isDirty, Func<CancellationToken, Task<Result>> save) => autoSave.Register(owner, isDirty, save);
     public void ActivateAutoSaveOwner(string owner) => autoSave.Activate(owner);
@@ -157,7 +194,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result<UpdateCheckResult>> CheckForUpdatesAsync(bool manual, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result<UpdateCheckResult>.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure<UpdateCheckResult>();
         var revision = Interlocked.Increment(ref updateCheckRevision);
         var channel = Settings.UpdateChannel;
         diagnostics.Write(LocalLogLevel.Information, "update.check_started", manual ? "Manual update check started." : "Startup update check started.");
@@ -183,7 +220,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> SelectGameAsync(GameVariant game, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var result = await bootstrapper.SelectGameAsync(Settings, game, cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value;
@@ -193,7 +230,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> SetGameInstallationAsync(string installationPath, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var result = await bootstrapper.SetGameInstallationAsync(Settings, installationPath, cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value;
@@ -201,10 +238,23 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         return Result.Success();
     }
 
-    public async Task<Result> SavePreferencesAsync(IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> roots, bool allowMissingDependencies, bool closeAfterLaunch, WorkshopStartupRefreshPolicy startupRefresh, ThemePreference theme, bool allowMultipleInstances, bool checkForUpdates, UpdateChannelPreference updateChannel, decimal textScale, decimal iconScale, CancellationToken cancellationToken)
+    public async Task<Result> SavePreferencesAsync(PreferenceSaveRequest request, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
-        var result = await autoSave.SerializeAsync(token => bootstrapper.SavePreferencesAsync(Settings, arguments, roots, allowMissingDependencies, closeAfterLaunch, startupRefresh, theme, allowMultipleInstances, checkForUpdates, updateChannel, textScale, iconScale, token), cancellationToken);
+        if (Settings is null) return NotInitializedFailure();
+        var result = await autoSave.SerializeAsync(token => bootstrapper.SavePreferencesAsync(
+            Settings,
+            request.Arguments,
+            request.Roots,
+            request.AllowMissingDependencies,
+            request.CloseAfterLaunch,
+            request.StartupRefresh,
+            request.Theme,
+            request.AllowMultipleInstances,
+            request.CheckForUpdates,
+            request.UpdateChannel,
+            request.TextScale,
+            request.IconScale,
+            token), cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value;
         Status = "Preferences saved";
@@ -246,7 +296,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> DetectSteamAsync(CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         Status = "Detecting Steam installation";
         var result = await steamSettings.DiscoverAndApplyAsync(Settings, cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
@@ -257,32 +307,50 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> RefreshModsAsync(CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
-        Status = "Discovering mods";
-        var result = await catalog.DiscoverAsync(Settings.ModRootLocations, null, cancellationToken);
-        if (!result.IsSuccess) { Status = result.Error!.Message; diagnostics.Write(LocalLogLevel.Warning, "mods.discovery_failed", result.Error.Message, new Dictionary<string, string> { ["code"] = result.Error.Code }); return Result.Failure(result.Error); }
-        discoveredMods = result.Value!;
+        await modRefreshGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (Settings is null) return NotInitializedFailure();
+            Status = "Discovering mods";
+            var result = await catalog.DiscoverAsync(Settings.ModRootLocations, null, cancellationToken);
+            if (!result.IsSuccess) { Status = result.Error!.Message; diagnostics.Write(LocalLogLevel.Warning, "mods.discovery_failed", result.Error.Message, new Dictionary<string, string> { ["code"] = result.Error.Code }); return Result.Failure(result.Error); }
+            await uiDispatcher.InvokeAsync(() => ApplyDiscoverySnapshot(result.Value!), cancellationToken);
+            await RefreshDependencyStatusesAsync(cancellationToken);
+            var conflictInput = await uiDispatcher.InvokeAsync(() => new ConflictAnalysisInput(discoveredMods.ToArray(), EffectiveActiveModKeys()), cancellationToken);
+            var conflictResult = await conflictService.AnalyzeAsync(conflictInput.DiscoveredMods, conflictInput.ActiveMods, cancellationToken);
+            if (!conflictResult.IsSuccess) { Status = conflictResult.Error!.Message; return Result.Failure(conflictResult.Error); }
+            ApplyConflicts(conflictResult.Value!);
+            ProjectMods(modSearchText, groupModsByCategory);
+            Status = $"Discovered {discoveredMods.Count:N0} mods";
+            diagnostics.Write(LocalLogLevel.Information, "mods.discovery_completed", "Mod discovery completed.", new Dictionary<string, string> { ["count"] = discoveredMods.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            return Result.Success();
+        }
+        finally { modRefreshGate.Release(); }
+    }
+
+    private void ApplyDiscoverySnapshot(IReadOnlyList<ModInstallation> snapshot)
+    {
+        discoveredMods = snapshot;
         this.RaisePropertyChanged(nameof(DiscoveredMods));
         var discoveredKeys = discoveredMods.Select(mod => mod.Key).ToHashSet();
-        foreach (var key in workshopStates.Keys.Where(key => !discoveredKeys.Contains(key)).ToArray()) workshopStates.Remove(key);
-        foreach (var key in workshopErrors.Keys.Where(key => !discoveredKeys.Contains(key)).ToArray()) workshopErrors.Remove(key);
-        foreach (var key in modDrafts.Keys.Where(key => !discoveredKeys.Contains(key)).ToArray()) modDrafts.Remove(key);
-        duplicateReport = duplicateAnalyzer.Analyze(discoveredMods, Settings.DuplicatePreferences ?? []);
+        RemoveUnknownEntries(workshopStates, discoveredKeys);
+        RemoveUnknownEntries(workshopErrors, discoveredKeys);
+        RemoveUnknownEntries(modDrafts, discoveredKeys);
+        duplicateReport = duplicateAnalyzer.Analyze(discoveredMods, Settings!.DuplicatePreferences ?? []);
         var intents = Settings.ModIntents.ToDictionary(intent => intent.Mod);
-        foreach (var mod in discoveredMods)
+        foreach (var modKey in discoveredMods.Select(mod => mod.Key).Where(modKey => !modDrafts.ContainsKey(modKey)))
         {
-            if (modDrafts.ContainsKey(mod.Key)) continue;
-            intents.TryGetValue(mod.Key, out var intent);
-            modDrafts[mod.Key] = new ModIntentEdit(mod.Key, intent?.IsActive ?? false, intent?.ExplicitOrder);
+            intents.TryGetValue(modKey, out var intent);
+            modDrafts[modKey] = new ModIntentEdit(modKey, intent?.IsActive ?? false, intent?.ExplicitOrder);
         }
-        await RefreshDependencyStatusesAsync(cancellationToken);
-        var conflictResult = await conflictService.AnalyzeAsync(discoveredMods, EffectiveActiveModKeys(), cancellationToken);
-        if (!conflictResult.IsSuccess) { Status = conflictResult.Error!.Message; return Result.Failure(conflictResult.Error); }
-        ApplyConflicts(conflictResult.Value!);
-        ProjectMods(modSearchText, groupModsByCategory);
-        Status = $"Discovered {discoveredMods.Count:N0} mods";
-        diagnostics.Write(LocalLogLevel.Information, "mods.discovery_completed", "Mod discovery completed.", new Dictionary<string, string> { ["count"] = discoveredMods.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) });
-        return Result.Success();
+    }
+
+    private static void RemoveUnknownEntries<TValue>(IDictionary<ModKey, TValue> items, IReadOnlySet<ModKey> validKeys)
+    {
+        foreach (var key in items.Keys.Where(item => !validKeys.Contains(item)).ToArray())
+        {
+            items.Remove(key);
+        }
     }
 
     public async Task<Result> RefreshModsAndConfigurationsAsync(CancellationToken cancellationToken)
@@ -293,7 +361,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> RefreshConflictsAsync(CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         Status = "Analyzing conflicts";
         var result = await conflictService.AnalyzeAsync(discoveredMods, EffectiveActiveModKeys(), cancellationToken).ConfigureAwait(false);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
@@ -314,33 +382,44 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         modSearchText = searchText ?? string.Empty;
         groupModsByCategory = groupByCategory;
         var intents = Settings.ModIntents.ToDictionary(intent => intent.Mod);
-        var items = discoveredMods.Where(mod => focusedModKeys.Count == 0 || focusedModKeys.Contains(mod.Key)).Select(mod =>
-        {
-            intents.TryGetValue(mod.Key, out var intent);
-            var draft = modDrafts[mod.Key];
-            return new ModGridItem(
-                mod.Key, mod.PackageId, mod.WorkshopId, intent?.ManualName ?? mod.Name,
-                draft.IsActive, intent?.IsHidden ?? false, draft.ExplicitOrder,
-                intent?.Category, intent?.Tags ?? new HashSet<TagId>(),
-                new ModStatus(InstallationStatus.Installed, duplicateReport.Status(mod.Key), dependencyStatuses.GetValueOrDefault(mod.Key, DependencyStatus.Unknown), conflictingMods.Contains(mod.Key) ? ConflictStatus.Conflicting : ConflictStatus.None, workshopStates.GetValueOrDefault(mod.Key)?.Update ?? UpdateStatus.Unknown),
-                mod.RequiresWarOfTheChosen, mod.DateAdded);
-        }).ToArray();
-        var rows = ModGridProjector.Project(items, new ModGridLookups(Settings.Categories, Settings.Tags), ModGridQuery.Default with
+        var entries = discoveredMods.Select(mod => CreateProjectionEntry(mod, intents.GetValueOrDefault(mod.Key))).ToArray();
+        var query = ModGridQuery.Default with
         {
             SearchText = modSearchText,
             IncludeHidden = includeHidden,
             StateFilters = modStateFilter is { } filter ? new HashSet<ModGridSemanticState> { filter } : new HashSet<ModGridSemanticState>(),
             Grouping = groupModsByCategory ? ModGridGrouping.Category : ModGridGrouping.None,
             Sort = new ModGridSort(ModGridSortColumn.Order, SortDirection.Ascending)
-        }, collapsedModGroups);
-        ModRows.Clear();
-        foreach (var row in rows)
-        {
-            if (row is ModGridGroupRow group) ModRows.Add(SessionModRow.Group(group.Key, group.Label, group.ItemCount, group.IsExpanded));
-            else if (row is ModGridModRow mod) ModRows.Add(SessionModRow.Mod(mod.Item, discoveredMods.Single(item => item.Key == mod.Item.Key), mod.SemanticState.ToString(), workshopStates.GetValueOrDefault(mod.Item.Key), workshopErrors.GetValueOrDefault(mod.Item.Key), UpdateDraft));
-        }
-        foreach (var retained in (Settings.RetainedWorkshopItems ?? []).Where(item => discoveredMods.All(mod => mod.WorkshopId != item.WorkshopId)))
-            ModRows.Add(SessionModRow.Retained(retained, retainedWorkshopStatuses.GetValueOrDefault(retained.WorkshopId)));
+        };
+        modProjectionStore ??= new(ModRows, UpdateDraft);
+        modProjectionStore.Apply(entries, new(query, new(Settings.Categories, Settings.Tags), collapsedModGroups.ToHashSet(), focusedModKeys.ToHashSet(),
+            Settings.RetainedWorkshopItems ?? [], new Dictionary<WorkshopId, string>(retainedWorkshopStatuses)));
+    }
+
+    private ModProjectionEntry CreateProjectionEntry(ModInstallation mod) => CreateProjectionEntry(mod, Settings!.ModIntents.FirstOrDefault(item => item.Mod == mod.Key));
+
+    private ModProjectionEntry CreateProjectionEntry(ModInstallation mod, ModUserIntent? intent)
+    {
+        var draft = modDrafts[mod.Key];
+        var item = new ModGridItem(
+            mod.Key, mod.PackageId, mod.WorkshopId, intent?.ManualName ?? mod.Name,
+            draft.IsActive, intent?.IsHidden ?? false, draft.ExplicitOrder,
+            intent?.Category, intent?.Tags ?? EmptyTagIds,
+            new ModStatus(InstallationStatus.Installed, duplicateReport.Status(mod.Key), dependencyStatuses.GetValueOrDefault(mod.Key, DependencyStatus.Unknown), conflictingMods.Contains(mod.Key) ? ConflictStatus.Conflicting : ConflictStatus.None, workshopStates.GetValueOrDefault(mod.Key)?.Update ?? UpdateStatus.Unknown),
+            mod.RequiresWarOfTheChosen, mod.DateAdded);
+        return new(mod, item, workshopStates.GetValueOrDefault(mod.Key), workshopErrors.GetValueOrDefault(mod.Key));
+    }
+
+    private void RefreshProjectionKeys(IEnumerable<ModKey> keys)
+    {
+        uiDispatcher.Invoke(() => RefreshProjectionKeysCore(keys));
+    }
+
+    private void RefreshProjectionKeysCore(IEnumerable<ModKey> keys)
+    {
+        if (modProjectionStore is null) { ProjectModsCore(modSearchText, groupModsByCategory); return; }
+        var keySet = keys.ToHashSet();
+        modProjectionStore.UpdateEntries(discoveredMods.Where(mod => keySet.Contains(mod.Key)).Select(CreateProjectionEntry).ToArray());
     }
 
     public void SetModGrouping(bool groupByCategory)
@@ -376,7 +455,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
             var capture = await uiDispatcher.InvokeAsync(() => Settings is null
                 ? null
                 : new ModGridSaveCapture(Settings, modGridRevision, new ModGridPreferences(includeHidden, modStateFilter, groupModsByCategory, collapsedModGroups.ToHashSet())), token).ConfigureAwait(false);
-            if (capture is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+            if (capture is null) return NotInitializedFailure();
             var result = await bootstrapper.SaveModGridPreferencesAsync(capture.Settings, capture.Preferences, token).ConfigureAwait(false);
             if (!result.IsSuccess)
             {
@@ -396,7 +475,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> SetNavigationRailModeAsync(NavigationRailMode mode, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var result = await autoSave.SerializeAsync(token => bootstrapper.SetNavigationRailModeAsync(Settings, mode, token), cancellationToken).ConfigureAwait(false);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value;
@@ -405,13 +484,13 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> SetAutoSaveChangesAsync(bool enabled, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var preference = await autoSave.SerializeAsync(token => bootstrapper.SetAutoSaveChangesAsync(Settings, enabled, token), cancellationToken).ConfigureAwait(false);
-            if (!preference.IsSuccess) { Status = preference.Error!.Message; return Result.Failure(preference.Error); }
-            Settings = preference.Value;
-            autoSave.SetEnabled(enabled);
-            Status = enabled ? "Auto-save enabled" : "Auto-save disabled";
-            return enabled ? await autoSave.FlushActiveAsync(cancellationToken).ConfigureAwait(false) : Result.Success();
+        if (!preference.IsSuccess) { Status = preference.Error!.Message; return Result.Failure(preference.Error); }
+        Settings = preference.Value;
+        autoSave.SetEnabled(enabled);
+        Status = enabled ? "Auto-save enabled" : "Auto-save disabled";
+        return enabled ? await autoSave.FlushActiveAsync(cancellationToken).ConfigureAwait(false) : Result.Success();
     }
 
     public Result<int> SetSelectedActive(IReadOnlySet<ModKey> keys, bool active)
@@ -434,11 +513,41 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         var skipped = missing.Count + duplicates.Count;
         if (changed == 0)
         {
-            var reason = skipped > 0 ? BulkSkipMessage(missing, duplicates) : active ? "All selected mods are already active." : "All selected mods are already inactive.";
+            var reason = BuildBulkActivationReason(active, skipped, missing, duplicates);
             return BulkActivationFailure("mods.activation_no_changes", reason);
         }
-        Status = $"{(active ? "Activated" : "Deactivated")} {changed:N0} selected mod{(changed == 1 ? string.Empty : "s")}" + (skipped > 0 ? $"; {BulkSkipMessage(missing, duplicates)}" : string.Empty);
+
+        var summaryStatus = BuildBulkActivationStatus(active, changed, skipped, missing, duplicates);
+        Status = summaryStatus;
         return Result<int>.Success(changed);
+    }
+
+    private static string BuildBulkActivationReason(bool active, int skipped, IReadOnlyCollection<ModKey> missing, IReadOnlyCollection<ModKey> duplicates)
+    {
+        if (skipped > 0) return BulkSkipMessage(missing, duplicates);
+        return active ? "All selected mods are already active." : "All selected mods are already inactive.";
+    }
+
+    private static string BuildBulkActivationStatus(bool active, int changed, int skipped, IReadOnlyCollection<ModKey> missing, IReadOnlyCollection<ModKey> duplicates)
+    {
+        var action = active ? "Activated" : "Deactivated";
+        var pluralSuffix = GetPluralSuffix(changed);
+        var summary = $"{action} {changed:N0} selected mod{pluralSuffix}";
+        if (skipped == 0) return summary;
+        return $"{summary}; {BulkSkipMessage(missing, duplicates)}";
+    }
+
+    private static string GetPluralSuffix(int count) => count == 1 ? string.Empty : "s";
+
+    private static string BuildSavedDraftStatus(bool isLatestRevision, int activeModCount, int unsavedDraftCount)
+    {
+        if (isLatestRevision)
+        {
+            return $"Saved {activeModCount:N0} active mods";
+        }
+
+        var pluralSuffix = unsavedDraftCount == 1 ? string.Empty : "s";
+        return $"Saved an earlier mod snapshot; {unsavedDraftCount:N0} newer edit{pluralSuffix} remain unsaved";
     }
 
     public async Task<Result<int>> SetSelectedActiveAndSaveAsync(IReadOnlySet<ModKey> keys, bool active, CancellationToken cancellationToken)
@@ -506,7 +615,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         var capture = await uiDispatcher.InvokeAsync(() => Settings is null
             ? null
             : new ModDraftSaveCapture(Settings, modDraftRevision, modDrafts.Values.ToArray(), discoveredMods.ToArray(), duplicateReport), cancellationToken).ConfigureAwait(false);
-        if (capture is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (capture is null) return NotInitializedFailure();
         await uiDispatcher.InvokeAsync(() => Status = "Saving mod activation and load order", cancellationToken).ConfigureAwait(false);
         var validation = ModDuplicateActivationPolicy.Validate(capture.DiscoveredMods, capture.Drafts, capture.DuplicateReport);
         if (!validation.IsSuccess)
@@ -539,9 +648,8 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         await uiDispatcher.InvokeAsync(() =>
         {
             ApplyConflictsCore(conflictResult.Value!);
-            Status = capture.Revision == modDraftRevision
-                ? $"Saved {updated.ModIntents.Count(intent => intent.IsActive):N0} active mods"
-                : $"Saved an earlier mod snapshot; {UnsavedModDraftCount:N0} newer edit{(UnsavedModDraftCount == 1 ? string.Empty : "s")} remain unsaved";
+            var summary = BuildSavedDraftStatus(capture.Revision == modDraftRevision, updated.ModIntents.Count(intent => intent.IsActive), UnsavedModDraftCount);
+            Status = summary;
             ProjectModsCore(modSearchText, groupModsByCategory);
         }, cancellationToken).ConfigureAwait(false);
         return Result.Success();
@@ -549,7 +657,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> PreferDuplicateAsync(ModKey mod, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var result = await duplicatePreferences.PreferAsync(Settings, discoveredMods, mod, cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         var updated = result.Value!;
@@ -563,7 +671,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> ClearDuplicatePreferenceAsync(ModKey mod, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var installation = discoveredMods.SingleOrDefault(item => item.Key == mod);
         if (installation is null) return Result.Failure(new Error("duplicates.mod_missing", "The selected installation is no longer discovered.", ErrorKind.NotFound));
         var result = await duplicatePreferences.ClearAsync(Settings, discoveredMods, installation.PackageId, cancellationToken);
@@ -589,7 +697,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> CreateProfileAsync(string name, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var effective = modIntents.Merge(Settings, modDrafts.Values.ToArray());
         if (!effective.IsSuccess) { Status = effective.Error!.Message; return Result.Failure(effective.Error); }
         var result = await profileService.CreateAsync(name, effective.Value!, discoveredMods, cancellationToken);
@@ -601,7 +709,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> ApplyProfileAsync(ProfileId id, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var result = await profileService.ApplyAsync(id, Settings, discoveredMods, cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         if (!result.Value!.Applied)
@@ -665,39 +773,86 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         var resolutions = preview.Value!.Entries.Select(entry =>
         {
             var matches = discoveredMods.Where(mod => entry.WorkshopId.HasValue ? mod.WorkshopId?.Value == entry.WorkshopId.Value : mod.PackageId.Value.Equals(entry.PackageId, StringComparison.OrdinalIgnoreCase)).ToArray();
-            return $"Line {entry.LineNumber}: resolution = {(matches.Length == 1 ? "installed" : matches.Length == 0 ? entry.WorkshopId.HasValue ? "missing Workshop item" : "missing local item" : "ambiguous duplicate")}";
+            var resolution = matches.Length switch
+            {
+                1 => "installed",
+                0 when entry.WorkshopId.HasValue => "missing Workshop item",
+                0 => "missing local item",
+                _ => "ambiguous duplicate"
+            };
+            return $"Line {entry.LineNumber}: resolution = {resolution}";
         });
         return Result<LegacyProfilePreview>.Success(preview.Value with { Report = preview.Value.Report + "\nResolution:\n" + string.Join('\n', resolutions) });
     }
 
     public async Task<Result> ImportLegacyProfileAsync(string name, LegacyProfilePreview preview, LegacyTaxonomyDisposition taxonomy, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var imported = await legacyProfileImport.ImportAsync(name, preview, taxonomy, Settings, discoveredMods, cancellationToken).ConfigureAwait(false);
-        if (!imported.IsSuccess) { Status = imported.Error!.Message; return Result.Failure(imported.Error); }
+        if (!imported.IsSuccess)
+        {
+            Status = imported.Error!.Message;
+            return Result.Failure(imported.Error);
+        }
+
         if (taxonomy == LegacyTaxonomyDisposition.AdoptIntoApplication)
         {
-            var currentSettings = Settings;
-            foreach (var entry in preview.Entries)
+            var adopted = await AdoptLegacyTaxonomyAsync(preview, cancellationToken).ConfigureAwait(false);
+            if (!adopted.IsSuccess)
             {
-                var matches = discoveredMods.Where(mod => entry.WorkshopId.HasValue ? mod.WorkshopId?.Value == entry.WorkshopId.Value : mod.PackageId.Value.Equals(entry.PackageId, StringComparison.OrdinalIgnoreCase)).ToArray();
-                if (matches.Length != 1) continue;
-                var adopted = await metadataService.AdoptDescriptorTaxonomyAsync(currentSettings, matches[0].Key, entry.Category, entry.Tags ?? [], cancellationToken).ConfigureAwait(false);
-                if (!adopted.IsSuccess) return Result.Failure(adopted.Error!);
-                currentSettings = adopted.Value!;
+                return Result.Failure(adopted.Error!);
             }
-            Settings = currentSettings;
+
+            Settings = adopted.Value!;
         }
+
+        return await FinishLegacyImportAsync(imported.Value!, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<Result> FinishLegacyImportAsync(LegacyProfileImportResult imported, CancellationToken cancellationToken)
+    {
         await RefreshProfilesAsync(cancellationToken).ConfigureAwait(false);
-        Status = imported.Value!.Imported ? $"Imported legacy profile '{imported.Value.Profile.Name}'" : $"Legacy profile '{imported.Value.Profile.Name}' was already imported";
+        Status = imported.Imported ? $"Imported legacy profile '{imported.Profile.Name}'" : $"Legacy profile '{imported.Profile.Name}' was already imported";
         return Result.Success();
+    }
+
+    private async Task<Result<ApplicationSettings>> AdoptLegacyTaxonomyAsync(LegacyProfilePreview preview, CancellationToken cancellationToken)
+    {
+        var currentSettings = Settings!;
+        foreach (var entry in preview.Entries)
+        {
+            var match = ResolveLegacyProfileMatch(entry);
+            if (match is null) continue;
+            var adopted = await metadataService.AdoptDescriptorTaxonomyAsync(currentSettings, match.Key, entry.Category, entry.Tags ?? [], cancellationToken).ConfigureAwait(false);
+            if (!adopted.IsSuccess)
+            {
+                return Result<ApplicationSettings>.Failure(adopted.Error!);
+            }
+
+            currentSettings = adopted.Value!;
+        }
+
+        return Result<ApplicationSettings>.Success(currentSettings);
+    }
+
+    private ModInstallation? ResolveLegacyProfileMatch(LegacyProfileEntry entry)
+    {
+        var matches = discoveredMods.Where(mod => entry.WorkshopId.HasValue
+            ? mod.WorkshopId?.Value == entry.WorkshopId.Value
+            : mod.PackageId.Value.Equals(entry.PackageId, StringComparison.OrdinalIgnoreCase)).ToArray();
+        return matches.Length == 1 ? matches[0] : null;
     }
 
     public async Task<Result<IReadOnlyList<SessionMissingProfileItem>>> GetMissingProfileItemsAsync(ProfileId profileId, CancellationToken cancellationToken)
     {
         var profiles = await profileService.ListAsync(cancellationToken); if (!profiles.IsSuccess) return Result<IReadOnlyList<SessionMissingProfileItem>>.Failure(profiles.Error!);
         var profile = profiles.Value!.SingleOrDefault(item => item.Id == profileId); if (profile is null) return Result<IReadOnlyList<SessionMissingProfileItem>>.Failure(new Error("profile.not_found", "Profile was not found.", ErrorKind.NotFound));
-        return Result<IReadOnlyList<SessionMissingProfileItem>>.Success(profile.Mods.Where(entry => entry.WorkshopId.HasValue && discoveredMods.All(mod => mod.WorkshopId != entry.WorkshopId)).Select(entry => new SessionMissingProfileItem(entry.WorkshopId!.Value, entry.PackageId.Value)).ToArray());
+        return Result<IReadOnlyList<SessionMissingProfileItem>>.Success(profile.Mods
+            .Where(entry => entry.WorkshopId.HasValue && discoveredMods.All(mod => mod.WorkshopId != entry.WorkshopId))
+            .Select(entry => entry.WorkshopId is { } workshopId ? new SessionMissingProfileItem(workshopId, entry.PackageId.Value) : null)
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .ToArray());
     }
 
     public async Task<Result> SubscribeProfileItemsAsync(IReadOnlyCollection<WorkshopId> ids, CancellationToken cancellationToken)
@@ -720,7 +875,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> SaveMetadataAsync(SessionModMetadata metadata, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var result = await metadataService.SaveAsync(Settings, metadata.Key,
             new ModMetadata(metadata.ManualName, metadata.Note, metadata.IsHidden, metadata.Category, metadata.Tags), cancellationToken);
         return ApplyMetadataResult(result, "Mod metadata saved");
@@ -728,37 +883,37 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> AssignCategoryAsync(IReadOnlyCollection<ModKey> mods, CategoryId? category, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         return ApplyMetadataResult(await metadataService.AssignCategoryAsync(Settings, mods, category, cancellationToken), $"Updated category for {mods.Count:N0} mods");
     }
 
     public async Task<Result> AddTagsAsync(IReadOnlyCollection<ModKey> mods, IReadOnlySet<TagId> tags, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         return ApplyMetadataResult(await metadataService.AddTagsAsync(Settings, mods, tags, cancellationToken), $"Updated tags for {mods.Count:N0} mods");
     }
 
     public async Task<Result> RemoveTagsAsync(IReadOnlyCollection<ModKey> mods, IReadOnlySet<TagId> tags, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         return ApplyMetadataResult(await metadataService.RemoveTagsAsync(Settings, mods, tags, cancellationToken), $"Removed tags from {mods.Count:N0} mods");
     }
 
     public async Task<Result> SetHiddenAsync(IReadOnlyCollection<ModKey> mods, bool hidden, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         return ApplyMetadataResult(await metadataService.SetHiddenAsync(Settings, mods, hidden, cancellationToken), hidden ? $"Hidden {mods.Count:N0} mods" : $"Unhidden {mods.Count:N0} mods");
     }
 
     public async Task<Result> SetTagColorAsync(TagId id, string? color, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         return ApplyMetadataResult(await metadataService.SetTagColorAsync(Settings, id, color, cancellationToken), "Tag color saved");
     }
 
     public async Task<Result> AdoptDescriptorTaxonomyAsync(ModKey mod, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var installation = discoveredMods.SingleOrDefault(item => item.Key == mod);
         if (installation is null) return Result.Failure(new Error("mods.not_found", "The selected mod is no longer discovered.", ErrorKind.NotFound));
         return ApplyMetadataResult(await metadataService.AdoptDescriptorTaxonomyAsync(Settings, mod, installation.Metadata?.DescriptorCategory, installation.Metadata?.DescriptorTags ?? [], cancellationToken), "Descriptor taxonomy adopted");
@@ -774,74 +929,165 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result<GameLaunchOutcome>> LaunchAsync(CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result<GameLaunchOutcome>.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedGameLaunchFailure();
         diagnostics.Write(LocalLogLevel.Information, "game.launch_requested", "Game launch requested.", new Dictionary<string, string> { ["game"] = Settings.SelectedGame.ToString() });
-        var rootSafety = modRootPreviewGuard.EnsureConfigurationSafe(Settings.SelectedGame);
-        if (!rootSafety.IsSuccess) { Status = rootSafety.Error!.Message; return Result<GameLaunchOutcome>.Failure(rootSafety.Error); }
-        var duplicateValidation = ModDuplicateActivationPolicy.Validate(discoveredMods, modDrafts.Values, duplicateAnalyzer.Analyze(discoveredMods, Settings.DuplicatePreferences ?? []));
-        if (!duplicateValidation.IsSuccess) { Status = duplicateValidation.Error!.Message; return Result<GameLaunchOutcome>.Failure(duplicateValidation.Error); }
-        var savedIntents = await modIntents.SaveAsync(Settings, modDrafts.Values.ToArray(), cancellationToken);
-        if (!savedIntents.IsSuccess)
-        {
-            Status = savedIntents.Error!.Message;
-            return Result<GameLaunchOutcome>.Failure(savedIntents.Error);
-        }
-        var settings = savedIntents.Value!;
-        Settings = settings;
-        ResetDraftsFromSettings();
-        if (string.IsNullOrWhiteSpace(settings.GameInstallationLocation))
+
+        var savedSettings = await SaveActiveDraftsAsync(cancellationToken).ConfigureAwait(false);
+        if (!savedSettings.IsSuccess) return Result<GameLaunchOutcome>.Failure(savedSettings.Error!);
+
+        var activeSettings = savedSettings.Value ?? throw new InvalidOperationException("Application settings were not produced after the launch preflight save.");
+        if (string.IsNullOrWhiteSpace(activeSettings.GameInstallationLocation))
         {
             Status = "Configure the selected game installation before launching.";
             return Result<GameLaunchOutcome>.Failure(new Error("launch.installation_required", Status, ErrorKind.Validation));
         }
+
+        var dependencyResult = await EvaluateLaunchDependenciesAsync(activeSettings, cancellationToken).ConfigureAwait(false);
+        if (!dependencyResult.IsSuccess)
+        {
+            Status = dependencyResult.Error!.Message;
+            diagnostics.Write(LocalLogLevel.Error, "game.launch_failed", Status, new Dictionary<string, string> { ["code"] = dependencyResult.Error.Code });
+            await diagnostics.FlushAsync(cancellationToken).ConfigureAwait(false);
+            return Result<GameLaunchOutcome>.Failure(dependencyResult.Error);
+        }
+
+        if (dependencyResult.Value!.HasBlockingIssues && !activeSettings.AllowLaunchWithMissingDependencies)
+        {
+            Status = DescribeLaunchDependencyBlock(dependencyResult.Value);
+            diagnostics.Write(LocalLogLevel.Warning, "game.launch_blocked", Status, new Dictionary<string, string>
+            {
+                ["code"] = "launch.dependencies_blocked",
+                ["blockingIssueCount"] = dependencyResult.Value.Issues.Count(issue => issue.Kind is ModDependencyIssueKind.Missing or ModDependencyIssueKind.Inactive or ModDependencyIssueKind.MetadataUnavailable).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            });
+            await diagnostics.FlushAsync(cancellationToken).ConfigureAwait(false);
+            return Result<GameLaunchOutcome>.Failure(new Error("launch.dependencies_blocked", Status, ErrorKind.Conflict));
+        }
+
+        Status = $"Launching {activeSettings.SelectedGame}";
+        var request = BuildGameLaunchRequest(activeSettings, discoveredMods.ToDictionary(mod => mod.Key));
+        var result = await launchCoordinator.LaunchAsync(request, cancellationToken).ConfigureAwait(false);
+        Status = BuildLaunchStatus(result, activeSettings);
+        diagnostics.Write(result.IsSuccess ? LocalLogLevel.Information : LocalLogLevel.Error, result.IsSuccess ? "game.launch_completed" : "game.launch_failed", Status, result.IsSuccess ? null : new Dictionary<string, string> { ["code"] = result.Error!.Code });
+        await diagnostics.FlushAsync(cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
+    private static string BuildLaunchStatus(Result<GameLaunchOutcome> result, ApplicationSettings activeSettings)
+    {
+        if (result.IsSuccess)
+        {
+            var activePackageCount = result.Value!.Configuration?.ActivePackageIds.Count ?? 0;
+            var launchProcessId = result.Value.Launch.ProcessId;
+            return $"Started {activeSettings.SelectedGame} with {activePackageCount:N0} mods (process {launchProcessId})";
+        }
+
+        return result.Error!.Message;
+    }
+
+    private async Task<Result<ApplicationSettings>> SaveActiveDraftsAsync(CancellationToken cancellationToken)
+    {
+        if (Settings is null) return NotInitializedFailure<ApplicationSettings>();
+
+        var rootSafety = modRootPreviewGuard.EnsureConfigurationSafe(Settings.SelectedGame);
+        if (!rootSafety.IsSuccess)
+        {
+            Status = rootSafety.Error!.Message;
+            return Result<ApplicationSettings>.Failure(rootSafety.Error);
+        }
+
+        var duplicateValidation = ModDuplicateActivationPolicy.Validate(discoveredMods, modDrafts.Values, duplicateAnalyzer.Analyze(discoveredMods, Settings.DuplicatePreferences ?? []));
+        if (!duplicateValidation.IsSuccess)
+        {
+            Status = duplicateValidation.Error!.Message;
+            return Result<ApplicationSettings>.Failure(duplicateValidation.Error);
+        }
+
+        var savedIntents = await modIntents.SaveAsync(Settings, modDrafts.Values.ToArray(), cancellationToken).ConfigureAwait(false);
+        if (!savedIntents.IsSuccess)
+        {
+            Status = savedIntents.Error!.Message;
+            return Result<ApplicationSettings>.Failure(savedIntents.Error);
+        }
+
+        var updatedSettings = savedIntents.Value!;
+        Settings = updatedSettings;
+        ResetDraftsFromSettings();
+        return Result<ApplicationSettings>.Success(updatedSettings);
+    }
+
+    private async Task<Result<ModDependencyReport>> EvaluateLaunchDependenciesAsync(ApplicationSettings settings, CancellationToken cancellationToken)
+    {
         var installations = discoveredMods.ToDictionary(mod => mod.Key);
+        var activeMods = settings.ModIntents
+            .Where(intent => intent.IsActive && installations.ContainsKey(intent.Mod))
+            .OrderBy(intent => intent.ExplicitOrder ?? int.MaxValue)
+            .ThenBy(intent => installations[intent.Mod].PackageId.Value, StringComparer.OrdinalIgnoreCase)
+            .Select(intent => installations[intent.Mod])
+            .Where(mod => mod.WorkshopId.HasValue)
+            .Select(mod => mod.WorkshopId!.Value)
+            .ToHashSet();
+
+        var installedWorkshop = discoveredMods.Where(mod => mod.WorkshopId.HasValue).Select(mod => mod.WorkshopId!.Value).ToHashSet();
+        var ignored = settings.ModIntents.Where(intent => intent.IsActive && installations.TryGetValue(intent.Mod, out var mod) && mod.WorkshopId.HasValue)
+            .ToDictionary(intent => installations[intent.Mod].WorkshopId!.Value, intent => intent.IgnoredDependencies);
+
+        var dependencyResult = await dependencies.EvaluateAsync(activeMods, installedWorkshop, activeMods, ignored, cancellationToken).ConfigureAwait(false);
+        if (!dependencyResult.IsSuccess) return Result<ModDependencyReport>.Failure(dependencyResult.Error!);
+        return Result<ModDependencyReport>.Success(dependencyResult.Value!);
+    }
+
+    private static GameLaunchRequest BuildGameLaunchRequest(ApplicationSettings settings, IReadOnlyDictionary<ModKey, ModInstallation> installations)
+    {
+        var gameInstallationLocation = settings.GameInstallationLocation ?? throw new InvalidOperationException("Game installation path is required to build the launch request.");
         var active = settings.ModIntents
             .Where(intent => intent.IsActive && installations.ContainsKey(intent.Mod))
             .OrderBy(intent => intent.ExplicitOrder ?? int.MaxValue)
             .ThenBy(intent => installations[intent.Mod].PackageId.Value, StringComparer.OrdinalIgnoreCase)
             .Select((intent, order) => new GameLaunchMod(intent.Mod, installations[intent.Mod].PackageId, order, installations[intent.Mod].RequiresWarOfTheChosen))
             .ToArray();
-        var activeInstallations = active.Select(mod => installations[mod.Mod]).ToArray();
-        var activeWorkshop = activeInstallations.Where(mod => mod.WorkshopId.HasValue).Select(mod => mod.WorkshopId!.Value).ToHashSet();
-        var installedWorkshop = discoveredMods.Where(mod => mod.WorkshopId.HasValue).Select(mod => mod.WorkshopId!.Value).ToHashSet();
-        var ignored = settings.ModIntents.Where(intent => intent.IsActive && installations.TryGetValue(intent.Mod, out var mod) && mod.WorkshopId.HasValue)
-            .ToDictionary(intent => installations[intent.Mod].WorkshopId!.Value, intent => intent.IgnoredDependencies);
-        var dependencyResult = await dependencies.EvaluateAsync(activeWorkshop, installedWorkshop, activeWorkshop, ignored, cancellationToken);
-        if (!dependencyResult.IsSuccess) { Status = dependencyResult.Error!.Message; return Result<GameLaunchOutcome>.Failure(dependencyResult.Error); }
-        if (dependencyResult.Value!.HasBlockingIssues && !settings.AllowLaunchWithMissingDependencies)
+
+        return new GameLaunchRequest(settings.SelectedGame, gameInstallationLocation, settings.ModRootLocations, active, settings.LaunchArguments);
+    }
+
+    private static string DescribeLaunchDependencyBlock(ModDependencyReport report)
+    {
+        var blocking = report.Issues.Where(issue => issue.Kind is ModDependencyIssueKind.Missing or ModDependencyIssueKind.Inactive or ModDependencyIssueKind.MetadataUnavailable).ToArray();
+        var counts = blocking.GroupBy(issue => issue.Kind).ToDictionary(group => group.Key, group => group.Count());
+        var parts = new[]
         {
-            Status = string.Join("; ", dependencyResult.Value.Issues.Where(issue => issue.Kind is ModDependencyIssueKind.Missing or ModDependencyIssueKind.Inactive or ModDependencyIssueKind.MetadataUnavailable).Select(issue => issue.Message));
-            return Result<GameLaunchOutcome>.Failure(new Error("launch.dependencies_blocked", Status, ErrorKind.Conflict));
-        }
-        Status = $"Launching {settings.SelectedGame}";
-        var request = new GameLaunchRequest(settings.SelectedGame, settings.GameInstallationLocation, settings.ModRootLocations, active, settings.LaunchArguments);
-        var result = await launchCoordinator.LaunchAsync(request, cancellationToken);
-        Status = result.IsSuccess
-            ? $"Started {settings.SelectedGame} with {result.Value!.Configuration?.ActivePackageIds.Count ?? 0:N0} mods (process {result.Value.Launch.ProcessId})"
-            : result.Error!.Message;
-        diagnostics.Write(result.IsSuccess ? LocalLogLevel.Information : LocalLogLevel.Error, result.IsSuccess ? "game.launch_completed" : "game.launch_failed", Status, result.IsSuccess ? null : new Dictionary<string, string> { ["code"] = result.Error!.Code });
-        await diagnostics.FlushAsync(cancellationToken).ConfigureAwait(false);
-        return result;
+            counts.GetValueOrDefault(ModDependencyIssueKind.Missing) is var missing && missing > 0 ? $"{missing:N0} missing" : null,
+            counts.GetValueOrDefault(ModDependencyIssueKind.Inactive) is var inactive && inactive > 0 ? $"{inactive:N0} inactive" : null,
+            counts.GetValueOrDefault(ModDependencyIssueKind.MetadataUnavailable) is var unavailable && unavailable > 0 ? $"{unavailable:N0} metadata unavailable" : null
+        }.Where(part => part is not null);
+        var examples = blocking.Select(issue => issue.Message).Distinct(StringComparer.Ordinal).Take(3).ToArray();
+        var detail = examples.Length == 0 ? string.Empty : $" Examples: {string.Join("; ", examples)}";
+        return $"Launch blocked by dependency checks ({string.Join(", ", parts)}).{detail} Enable 'Allow launch with missing dependencies' to proceed anyway.";
     }
 
     public async Task<Result> ApplyConfigurationAsync(CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
-        var rootSafety = modRootPreviewGuard.EnsureConfigurationSafe(Settings.SelectedGame);
-        if (!rootSafety.IsSuccess) { Status = rootSafety.Error!.Message; return rootSafety; }
-        var duplicateValidation = ModDuplicateActivationPolicy.Validate(discoveredMods, modDrafts.Values, duplicateAnalyzer.Analyze(discoveredMods, Settings.DuplicatePreferences ?? []));
-        if (!duplicateValidation.IsSuccess) { Status = duplicateValidation.Error!.Message; return duplicateValidation; }
-        var saved = await modIntents.SaveAsync(Settings, modDrafts.Values.ToArray(), cancellationToken);
-        if (!saved.IsSuccess) { Status = saved.Error!.Message; return Result.Failure(saved.Error); }
-        var current = saved.Value!;
-        Settings = current;
-        ResetDraftsFromSettings();
-        if (string.IsNullOrWhiteSpace(current.GameInstallationLocation)) return Result.Failure(new Error("configuration.installation_required", "Configure the selected game installation first.", ErrorKind.Validation));
-        var installations = discoveredMods.ToDictionary(mod => mod.Key);
-        var active = current.ModIntents.Where(intent => intent.IsActive && installations.ContainsKey(intent.Mod)).OrderBy(intent => intent.ExplicitOrder ?? int.MaxValue).ThenBy(intent => installations[intent.Mod].PackageId.Value, StringComparer.OrdinalIgnoreCase).Select((intent, order) => new GameLaunchMod(intent.Mod, installations[intent.Mod].PackageId, order, installations[intent.Mod].RequiresWarOfTheChosen)).ToArray();
-        var receipt = await configurationWriter.ApplyAsync(new GameLaunchRequest(current.SelectedGame, current.GameInstallationLocation, current.ModRootLocations, active, current.LaunchArguments), cancellationToken);
-        Status = receipt.IsSuccess ? $"Applied configuration with {receipt.Value!.ActivePackageIds.Count:N0} mods" : receipt.Error!.Message;
+        if (Settings is null) return NotInitializedFailure();
+
+        var saved = await SaveActiveDraftsAsync(cancellationToken).ConfigureAwait(false);
+        if (!saved.IsSuccess) return Result.Failure(saved.Error!);
+
+        var activeSettings = saved.Value ?? throw new InvalidOperationException("Application settings were not produced after saving active drafts.");
+        if (string.IsNullOrWhiteSpace(activeSettings.GameInstallationLocation)) return Result.Failure(new Error("configuration.installation_required", "Configure the selected game installation first.", ErrorKind.Validation));
+
+        var request = BuildGameLaunchRequest(activeSettings, discoveredMods.ToDictionary(mod => mod.Key));
+        var receipt = await configurationWriter.ApplyAsync(request, cancellationToken).ConfigureAwait(false);
+        Status = BuildConfigurationStatus(receipt);
         return receipt.IsSuccess ? Result.Success() : Result.Failure(receipt.Error!);
+    }
+
+    private static string BuildConfigurationStatus(Result<GameConfigurationReceipt> receipt)
+    {
+        if (receipt.IsSuccess)
+        {
+            return $"Applied configuration with {receipt.Value!.ActivePackageIds.Count:N0} mods";
+        }
+
+        return receipt.Error!.Message;
     }
 
     private void UpdateDraft(ModKey key, bool isActive, int? order)
@@ -849,8 +1095,20 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         modDrafts[key] = new ModIntentEdit(key, isActive, order);
         modDraftRevision++;
         RaiseDraftStateChanged();
-        Status = HasUnsavedModDrafts ? $"{UnsavedModDraftCount:N0} unsaved activation/order edit{(UnsavedModDraftCount == 1 ? string.Empty : "s")}" : "Activation and load order match saved settings";
+        Status = BuildDraftStatus();
+        RefreshProjectionKeys([key]);
         autoSave.Changed(ModsAutoSaveOwner);
+    }
+
+    private string BuildDraftStatus()
+    {
+        if (HasUnsavedModDrafts)
+        {
+            var suffix = UnsavedModDraftCount == 1 ? string.Empty : "s";
+            return $"{UnsavedModDraftCount:N0} unsaved activation/order edit{suffix}";
+        }
+
+        return "Activation and load order match saved settings";
     }
 
     private Result ApplyMetadataResult(Result<ApplicationSettings> result, string successStatus)
@@ -867,10 +1125,10 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         modDrafts.Clear();
         if (Settings is null) return;
         var intents = Settings.ModIntents.ToDictionary(intent => intent.Mod);
-        foreach (var mod in discoveredMods)
+        foreach (var modKey in discoveredMods.Select(mod => mod.Key))
         {
-            intents.TryGetValue(mod.Key, out var intent);
-            modDrafts[mod.Key] = new ModIntentEdit(mod.Key, intent?.IsActive ?? false, intent?.ExplicitOrder);
+            intents.TryGetValue(modKey, out var intent);
+            modDrafts[modKey] = new ModIntentEdit(modKey, intent?.IsActive ?? false, intent?.ExplicitOrder);
         }
         RaiseDraftStateChanged();
     }
@@ -938,7 +1196,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> AdoptWorkshopTagsAsync(ModKey mod, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var installation = discoveredMods.SingleOrDefault(item => item.Key == mod);
         if (installation?.WorkshopId is not { } id) return Result.Failure(new Error("workshop.identity_missing", "The selected mod has no Workshop identity.", ErrorKind.Validation));
         var item = await workshopService.GetItemAsync(id, cancellationToken);
@@ -948,7 +1206,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result<SessionDependencyDetails>> LoadDependencyDetailsAsync(ModKey mod, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result<SessionDependencyDetails>.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure<SessionDependencyDetails>();
         var selected = discoveredMods.SingleOrDefault(item => item.Key == mod);
         if (selected?.WorkshopId is not { } selectedId) return Result<SessionDependencyDetails>.Failure(new Error("dependencies.workshop_required", "The selected mod has no Workshop identity.", ErrorKind.Validation));
         var workshopMods = discoveredMods.Where(item => item.WorkshopId.HasValue).ToArray();
@@ -965,7 +1223,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> SetDependencyIgnoredAsync(ModKey parent, WorkshopId required, bool ignored, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var result = await modIntents.SetDependencyIgnoredAsync(Settings, parent, required, ignored, cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value;
@@ -993,39 +1251,95 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
     {
         installations.TryGetValue(related, out var installation);
         var issue = issues.FirstOrDefault(item => item.Parent == parent && item.Required == related);
-        return new SessionDependencyRelationship(parent, related, installation?.Name ?? $"Workshop {related.Value}", installation?.Key, ignored ? "Ignored" : issue?.Kind.ToString() ?? (installation is null ? "Missing" : "Satisfied"), ignored, depth, path);
+        var status = GetDependencyStatus(ignored, issue, installation);
+        return new SessionDependencyRelationship(parent, related, installation?.Name ?? $"Workshop {related.Value}", installation?.Key, status, ignored, depth, path);
     }
+
+    private static string GetDependencyStatus(bool ignored, ModDependencyIssue? issue, ModInstallation? installation)
+    {
+        if (ignored) return "Ignored";
+        return issue?.Kind.ToString() ?? DetermineDependencyStatusLabel(installation);
+    }
+
+    public sealed record PreferenceSaveRequest(
+        IReadOnlyList<LaunchArgument> Arguments,
+        IReadOnlyList<string> Roots,
+        bool AllowMissingDependencies,
+        bool CloseAfterLaunch,
+        WorkshopStartupRefreshPolicy StartupRefresh,
+        ThemePreference Theme,
+        bool AllowMultipleInstances,
+        bool CheckForUpdates,
+        UpdateChannelPreference UpdateChannel,
+        decimal TextScale,
+        decimal IconScale);
+
+    private static string DetermineDependencyStatusLabel(ModInstallation? installation) => installation is null ? "Missing" : "Satisfied";
 
     private static IEnumerable<(WorkshopId Parent, WorkshopId Related, int Depth, IReadOnlyList<WorkshopId> Path)> TraverseRequired(WorkshopId root, IReadOnlyDictionary<WorkshopId, IReadOnlyList<WorkshopId>> graph)
     {
-        var queue = new Queue<(WorkshopId Node, IReadOnlyList<WorkshopId> Path)>(); queue.Enqueue((root, new[] { root }));
+        var queue = new Queue<(WorkshopId Node, IReadOnlyList<WorkshopId> Path)>();
+        queue.Enqueue((root, new[] { root }));
         var seen = new HashSet<(WorkshopId, WorkshopId)>();
-        while (queue.Count > 0) { var current = queue.Dequeue(); foreach (var child in graph.GetValueOrDefault(current.Node) ?? []) { if (!seen.Add((current.Node, child))) continue; var path = current.Path.Append(child).ToArray(); yield return (current.Node, child, path.Length - 1, path); if (!current.Path.Contains(child)) queue.Enqueue((child, path)); } }
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var child in graph.GetValueOrDefault(current.Node) ?? [])
+            {
+                if (!seen.Add((current.Node, child))) continue;
+                var path = current.Path.Append(child).ToArray();
+                yield return (current.Node, child, path.Length - 1, path);
+                if (!current.Path.Contains(child)) queue.Enqueue((child, path));
+            }
+        }
     }
 
     private static IReadOnlyList<WorkshopId>? FindPath(WorkshopId root, WorkshopId target, IReadOnlyDictionary<WorkshopId, IReadOnlyList<WorkshopId>> graph)
     {
-        var queue = new Queue<IReadOnlyList<WorkshopId>>(); queue.Enqueue(new[] { root }); var seen = new HashSet<WorkshopId> { root };
-        while (queue.Count > 0) { var path = queue.Dequeue(); foreach (var child in graph.GetValueOrDefault(path[^1]) ?? []) { var next = path.Append(child).ToArray(); if (child == target) return next; if (seen.Add(child)) queue.Enqueue(next); } } return null;
+        var queue = new Queue<IReadOnlyList<WorkshopId>>();
+        queue.Enqueue(new[] { root });
+        var seen = new HashSet<WorkshopId> { root };
+
+        while (queue.Count > 0)
+        {
+            var path = queue.Dequeue();
+            foreach (var child in graph.GetValueOrDefault(path[^1]) ?? [])
+            {
+                var next = path.Append(child).ToArray();
+                if (child == target) return next;
+                if (seen.Add(child)) queue.Enqueue(next);
+            }
+        }
+
+        return null;
     }
 
     public async Task<Result> RefreshWorkshopStatesAsync(IProgress<WorkshopOperationProgress>? progress, CancellationToken cancellationToken)
     {
         if (!await TryEnterWorkshopAsync(cancellationToken)) return WorkshopBusy();
         SetWorkshopAvailability(WorkshopConnectionState.Connecting);
+        var operationRevision = Interlocked.Increment(ref workshopProgressRevision);
         var forwarding = new Progress<WorkshopOperationProgress>(update =>
         {
-            if (update.State is not null) ApplyWorkshopProgress(update.State);
+            if (Volatile.Read(ref workshopProgressRevision) != operationRevision) return;
+            if (update.State is not null) ApplyWorkshopProgress(update.State, operationRevision);
             progress?.Report(update);
         });
-        WorkshopBatchResult result;
-        try { result = await workshopOperations.RefreshAsync(discoveredMods, forwarding, cancellationToken); }
-        finally { ExitWorkshop(); }
-        ApplyWorkshopOutcomes(result.Items);
-        ProjectMods(modSearchText, groupModsByCategory);
-        Status = DescribeWorkshopResult("Workshop state refreshed", result);
-        ObserveWorkshopAvailability(result);
-        return result.IsSuccess ? Result.Success() : Result.Failure(new Error("workshop.refresh_partial", Status, result.IsPartialSuccess ? ErrorKind.ExternalService : result.Items.FirstOrDefault(item => !item.Outcome.IsSuccess)?.Outcome.Error?.Kind ?? ErrorKind.ExternalService));
+        try
+        {
+            var result = await workshopOperations.RefreshAsync(discoveredMods, forwarding, cancellationToken);
+            Interlocked.CompareExchange(ref workshopProgressRevision, operationRevision + 1, operationRevision);
+            ApplyWorkshopOutcomes(result.Items);
+            Status = DescribeWorkshopResult("Workshop state refreshed", result);
+            ObserveWorkshopAvailability(result);
+            return result.IsSuccess ? Result.Success() : Result.Failure(new Error("workshop.refresh_partial", Status, DetermineWorkshopBatchErrorKind(result)));
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref workshopProgressRevision, operationRevision + 1, operationRevision);
+            ExitWorkshop();
+        }
     }
 
     public async Task<Result> DownloadWorkshopUpdatesAsync(IReadOnlySet<ModKey> mods, IProgress<WorkshopOperationProgress>? progress, CancellationToken cancellationToken)
@@ -1034,63 +1348,109 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         if (selected.Length == 0) return Result.Failure(new Error("workshop.selection_empty", "Select at least one Workshop mod.", ErrorKind.Validation));
         if (!await TryEnterWorkshopAsync(cancellationToken)) return WorkshopBusy();
         SetWorkshopAvailability(WorkshopConnectionState.Connecting);
+        var operationRevision = Interlocked.Increment(ref workshopProgressRevision);
         double aggregate = 0;
         var forwarding = new Progress<WorkshopOperationProgress>(update =>
         {
-            if (update.State is not null) ApplyWorkshopProgress(update.State);
+            if (Volatile.Read(ref workshopProgressRevision) != operationRevision) return;
+            if (update.State is not null) ApplyWorkshopProgress(update.State, operationRevision);
             if (update.BytesTotal is > 0) aggregate = Math.Max(aggregate, (double)update.BytesDownloaded / update.BytesTotal.Value);
-            Status = update.BytesTotal is > 0 ? $"Downloading Workshop content: {aggregate:P0}" : $"Monitoring Workshop downloads: {update.CompletedItems:N0}/{update.TotalItems:N0}";
+            Status = BuildWorkshopProgressStatus(update, aggregate);
             progress?.Report(update);
         });
-        WorkshopBatchResult result;
-        try { result = await workshopOperations.DownloadUpdatesAsync(selected, WorkshopDownloadOptions.Default, forwarding, cancellationToken); }
-        finally { ExitWorkshop(); }
-        ApplyWorkshopOutcomes(result.Items);
-        await RefreshModsAndConfigurationsAsync(CancellationToken.None);
-        ApplyWorkshopOutcomes(result.Items);
-        ProjectMods(modSearchText, groupModsByCategory);
-        Status = DescribeWorkshopResult(result.ObservationCancelled ? "Stopped monitoring Workshop downloads; Steam may continue" : "Workshop downloads completed", result);
-        ObserveWorkshopAvailability(result);
-        return result.IsSuccess ? Result.Success() : Result.Failure(new Error("workshop.download_partial", Status, result.ObservationCancelled ? ErrorKind.Cancelled : ErrorKind.ExternalService));
+        try
+        {
+            var result = await workshopOperations.DownloadUpdatesAsync(selected, WorkshopDownloadOptions.Default, forwarding, cancellationToken);
+            Interlocked.CompareExchange(ref workshopProgressRevision, operationRevision + 1, operationRevision);
+            ApplyWorkshopOutcomes(result.Items);
+            await RefreshModsAndConfigurationsAsync(CancellationToken.None);
+            ApplyWorkshopOutcomes(result.Items);
+            Status = DescribeWorkshopResult(BuildDownloadSummaryLabel(result.ObservationCancelled), result);
+            ObserveWorkshopAvailability(result);
+            return result.IsSuccess ? Result.Success() : Result.Failure(new Error("workshop.download_partial", Status, DetermineDownloadErrorKind(result.ObservationCancelled)));
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref workshopProgressRevision, operationRevision + 1, operationRevision);
+            ExitWorkshop();
+        }
     }
 
     public async Task<Result> SubscribeRetainedAsync(WorkshopId id, CancellationToken cancellationToken)
     {
         if (!await TryEnterWorkshopAsync(cancellationToken)) return WorkshopBusy();
-        WorkshopMutationResult result;
-        try { result = await subscriptions.SubscribeAsync([id], cancellationToken); }
+        try
+        {
+            var result = await subscriptions.SubscribeAsync([id], cancellationToken);
+            await RefreshModsAndConfigurationsAsync(CancellationToken.None);
+            await RefreshProfilesAsync(CancellationToken.None);
+            var item = result.Items.Single();
+            var workshopStatus = BuildRetainedWorkshopStatus(item);
+            uiDispatcher.Invoke(() =>
+            {
+                retainedWorkshopStatuses[id] = workshopStatus;
+                ProjectModsCore(modSearchText, groupModsByCategory);
+            });
+            Status = BuildRetainedSubscriptionStatus(item, id, result);
+            return result.IsSuccess ? Result.Success() : Result.Failure(item.Outcome.Error!);
+        }
         finally { ExitWorkshop(); }
-        await RefreshModsAndConfigurationsAsync(CancellationToken.None);
-        await RefreshProfilesAsync(CancellationToken.None);
-        var item = result.Items.Single();
-        retainedWorkshopStatuses[id] = item.Subscribed
-            ? item.DownloadRequested ? "Subscribed; waiting for Steam download" : $"Subscribed; download request failed: {item.DownloadRequestOutcome!.Value.Error!.Message}"
-            : $"Subscription failed: {item.Outcome.Error!.Message}";
-        ProjectMods(modSearchText, groupModsByCategory);
-        Status = item.Subscribed && !item.DownloadRequested
-            ? $"Subscribed to Workshop item {id.Value}, but the download request failed: {item.DownloadRequestOutcome!.Value.Error!.Message}"
-            : result.IsSuccess ? $"Subscribed to Workshop item {id.Value}; waiting for Steam download" : item.Outcome.Error!.Message;
-        return result.IsSuccess ? Result.Success() : Result.Failure(result.Items.Single().Outcome.Error!);
+    }
+
+    private static string BuildRetainedWorkshopStatus(WorkshopMutationOutcome item)
+    {
+        if (item.Subscribed)
+        {
+            if (item.DownloadRequested)
+            {
+                return "Subscribed; waiting for Steam download";
+            }
+
+            return item.DownloadRequestOutcome is { Error: { Message: var message } }
+                ? $"Subscribed; download request failed: {message}"
+                : "Subscribed; download request failed";
+        }
+
+        return item.Outcome.Error?.Message ?? "Subscription failed";
+    }
+
+    private static string BuildRetainedSubscriptionStatus(WorkshopMutationOutcome item, WorkshopId id, WorkshopMutationResult result)
+    {
+        if (item.Subscribed && !item.DownloadRequested)
+        {
+            return item.DownloadRequestOutcome is { Error: { Message: var message } }
+                ? $"Subscribed to Workshop item {id.Value}, but the download request failed: {message}"
+                : $"Subscribed to Workshop item {id.Value}, but the download request failed";
+        }
+
+        if (result.IsSuccess)
+        {
+            return $"Subscribed to Workshop item {id.Value}; waiting for Steam download";
+        }
+
+        return item.Outcome.Error?.Message ?? "Subscription failed";
     }
 
     public async Task<Result> UnsubscribeRetainingIntentAsync(IReadOnlySet<ModKey> mods, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         if (!await TryEnterWorkshopAsync(cancellationToken)) return WorkshopBusy();
-        Result<(ApplicationSettings Settings, WorkshopMutationResult Mutations)> result;
-        try { result = await subscriptions.UnsubscribeRetainingIntentAsync(Settings, discoveredMods, mods, cancellationToken); }
+        try
+        {
+            var result = await subscriptions.UnsubscribeRetainingIntentAsync(Settings, discoveredMods, mods, cancellationToken);
+            if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
+            Settings = result.Value.Settings;
+            await RefreshModsAndConfigurationsAsync(CancellationToken.None);
+            await RefreshProfilesAsync(CancellationToken.None);
+            Status = BuildUnsubscribeStatus(result.Value.Mutations.IsSuccess);
+            return result.Value.Mutations.IsSuccess ? Result.Success() : Result.Failure(new Error("workshop.unsubscribe_partial", Status, ErrorKind.ExternalService));
+        }
         finally { ExitWorkshop(); }
-        if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
-        Settings = result.Value!.Settings;
-        await RefreshModsAndConfigurationsAsync(CancellationToken.None);
-        await RefreshProfilesAsync(CancellationToken.None);
-        Status = result.Value.Mutations.IsSuccess ? "Unsubscribed and retained mod intent" : "Some Workshop unsubscribe operations failed";
-        return result.Value.Mutations.IsSuccess ? Result.Success() : Result.Failure(new Error("workshop.unsubscribe_partial", Status, ErrorKind.ExternalService));
     }
 
     public async Task<Result> RemoveRetainedIntentAsync(WorkshopId id, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var result = await subscriptions.RemoveRetainedIntentAsync(Settings, id, cancellationToken);
         if (!result.IsSuccess) return Result.Failure(result.Error!);
         Settings = result.Value; ProjectMods(modSearchText, groupModsByCategory); Status = "Removed retained Workshop intent"; return Result.Success();
@@ -1100,7 +1460,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> ConfirmManualRemovalAsync(ModRemovalPreview preview, CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var deleted = await removalFilesystem.DeleteConfirmedAsync(preview, cancellationToken); if (!deleted.IsSuccess) return deleted;
         var removed = await modIntents.RemoveAsync(Settings, preview.Mod, cancellationToken); if (!removed.IsSuccess) return Result.Failure(removed.Error!);
         Settings = removed.Value; await RefreshModsAndConfigurationsAsync(CancellationToken.None); await RefreshProfilesAsync(CancellationToken.None); Status = "Manual mod removed"; return Result.Success();
@@ -1108,7 +1468,7 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     public async Task<Result> RefreshConfigurationDocumentsAsync(CancellationToken cancellationToken)
     {
-        if (Settings is null) return Result.Failure(new Error("session.not_initialized", "AAML is not initialized.", ErrorKind.Unavailable));
+        if (Settings is null) return NotInitializedFailure();
         var result = await configurationCatalog.ListAsync(discoveredMods, Settings.SelectedGame, cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         ConfigurationDocuments.Clear();
@@ -1139,12 +1499,19 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 
     private void ApplyWorkshopOutcomes(IEnumerable<WorkshopModOutcome> outcomes)
     {
-        foreach (var outcome in outcomes)
+        uiDispatcher.Invoke(() =>
         {
-            if (outcome.State is not null) workshopStates[outcome.Mod] = outcome.State;
-            if (outcome.Outcome.IsSuccess) workshopErrors.Remove(outcome.Mod);
-            else workshopErrors[outcome.Mod] = outcome.Outcome.Error!.Message;
-        }
+            var affected = new HashSet<ModKey>();
+            foreach (var outcome in outcomes)
+            {
+                if (!modDrafts.ContainsKey(outcome.Mod)) continue;
+                if (outcome.State is not null) workshopStates[outcome.Mod] = outcome.State;
+                if (outcome.Outcome.IsSuccess) workshopErrors.Remove(outcome.Mod);
+                else workshopErrors[outcome.Mod] = outcome.Outcome.Error!.Message;
+                affected.Add(outcome.Mod);
+            }
+            RefreshProjectionKeysCore(affected);
+        });
     }
 
     private async Task ApplyStartupWorkshopPolicyAsync(CancellationToken cancellationToken)
@@ -1156,40 +1523,72 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         if (selected.Count == 0) return;
         if (!await TryEnterWorkshopAsync(cancellationToken)) return;
         SetWorkshopAvailability(WorkshopConnectionState.Connecting);
-        WorkshopBatchResult result;
-        try { result = await workshopOperations.RefreshAsync(selected, null, cancellationToken); }
+        try
+        {
+            var result = await workshopOperations.RefreshAsync(selected, null, cancellationToken);
+            ApplyWorkshopOutcomes(result.Items);
+            Status = DescribeWorkshopResult("Workshop state checked during startup", result);
+            ObserveWorkshopAvailability(result);
+        }
         finally { ExitWorkshop(); }
-        ApplyWorkshopOutcomes(result.Items);
-        ProjectMods(modSearchText, groupModsByCategory);
-        Status = DescribeWorkshopResult("Workshop state checked during startup", result);
-        ObserveWorkshopAvailability(result);
     }
 
-    private void ApplyWorkshopProgress(WorkshopModState state)
+    private void ApplyWorkshopProgress(WorkshopModState state, long operationRevision)
     {
-        foreach (var mod in discoveredMods.Where(mod => mod.WorkshopId == state.WorkshopId))
+        uiDispatcher.Invoke(() =>
         {
-            workshopStates[mod.Key] = state with { Mod = mod.Key };
-            workshopErrors.Remove(mod.Key);
-        }
-        foreach (var row in ModRows.Where(row => row.Key is not null && workshopStates.TryGetValue(row.Key.Value, out _)))
-            row.ApplyWorkshop(workshopStates[row.Key!.Value], workshopErrors.GetValueOrDefault(row.Key.Value));
+            if (Volatile.Read(ref workshopProgressRevision) != operationRevision) return;
+            var affected = discoveredMods
+                .Where(mod => mod.WorkshopId == state.WorkshopId)
+                .Select(mod => mod.Key)
+                .ToArray();
+            foreach (var key in affected)
+            {
+                workshopStates[key] = state with { Mod = key };
+                workshopErrors.Remove(key);
+            }
+            RefreshProjectionKeysCore(affected);
+        });
     }
 
     private async Task<bool> TryEnterWorkshopAsync(CancellationToken cancellationToken)
     {
         var entered = await workshopGate.WaitAsync(0, cancellationToken);
-        if (entered) this.RaisePropertyChanged(nameof(IsWorkshopBusy));
+        if (entered) uiDispatcher.Invoke(() => this.RaisePropertyChanged(nameof(IsWorkshopBusy)));
         return entered;
     }
 
     private void ExitWorkshop()
     {
         workshopGate.Release();
-        this.RaisePropertyChanged(nameof(IsWorkshopBusy));
+        uiDispatcher.Invoke(() => this.RaisePropertyChanged(nameof(IsWorkshopBusy)));
     }
 
     private static Result WorkshopBusy() => Result.Failure(new Error("workshop.operation_in_progress", "Another Workshop operation is already in progress.", ErrorKind.Conflict));
+
+    private static ErrorKind DetermineWorkshopBatchErrorKind(WorkshopBatchResult result)
+    {
+        if (result.IsPartialSuccess) return ErrorKind.ExternalService;
+
+        var error = result.Items.FirstOrDefault(item => !item.Outcome.IsSuccess)?.Outcome.Error;
+        return error?.Kind ?? ErrorKind.ExternalService;
+    }
+
+    private static string BuildWorkshopProgressStatus(WorkshopOperationProgress update, double aggregate)
+    {
+        if (update.BytesTotal is > 0)
+        {
+            return $"Downloading Workshop content: {aggregate:P0}";
+        }
+
+        return $"Monitoring Workshop downloads: {update.CompletedItems:N0}/{update.TotalItems:N0}";
+    }
+
+    private static string BuildDownloadSummaryLabel(bool observationCancelled) => observationCancelled ? "Stopped monitoring Workshop downloads; Steam may continue" : "Workshop downloads completed";
+
+    private static ErrorKind DetermineDownloadErrorKind(bool observationCancelled) => observationCancelled ? ErrorKind.Cancelled : ErrorKind.ExternalService;
+
+    private static string BuildUnsubscribeStatus(bool success) => success ? "Unsubscribed and retained mod intent" : "Some Workshop unsubscribe operations failed";
 
     private void SetWorkshopAvailability(WorkshopConnectionState state, Error? error = null) =>
         WorkshopAvailability = new WorkshopAvailability(state, DateTimeOffset.UtcNow, error?.Message,
@@ -1230,27 +1629,40 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
         {
             var id = mod.WorkshopId!.Value;
             var related = result.Value!.Issues.Where(issue => issue.Path.Count > 0 && issue.Path[0] == id).ToArray();
-            statuses[mod.Key] = related.Any(issue => issue.Kind is ModDependencyIssueKind.Missing or ModDependencyIssueKind.Inactive)
-                ? DependencyStatus.Missing
-                : related.Any(issue => issue.Kind == ModDependencyIssueKind.MetadataUnavailable)
-                    ? DependencyStatus.Unknown
-                    : DependencyStatus.Satisfied;
+            statuses[mod.Key] = DetermineDependencyStatus(related);
         }
         await uiDispatcher.InvokeAsync(() =>
         {
             dependencyStatuses.Clear();
-            foreach (var (key, status) in statuses) dependencyStatuses[key] = status;
+            foreach (var (key, dependencyState) in statuses) dependencyStatuses[key] = dependencyState;
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static DependencyStatus DetermineDependencyStatus(IReadOnlyList<ModDependencyIssue> related)
+    {
+        if (related.Any(issue => issue.Kind is ModDependencyIssueKind.Missing or ModDependencyIssueKind.Inactive))
+        {
+            return DependencyStatus.Missing;
+        }
+
+        if (related.Any(issue => issue.Kind == ModDependencyIssueKind.MetadataUnavailable))
+        {
+            return DependencyStatus.Unknown;
+        }
+
+        return DependencyStatus.Satisfied;
     }
 
     private sealed record ModDraftSaveCapture(ApplicationSettings Settings, long Revision, IReadOnlyList<ModIntentEdit> Drafts, IReadOnlyList<ModInstallation> DiscoveredMods, ModDuplicateReport DuplicateReport);
     private sealed record ModGridSaveCapture(ApplicationSettings Settings, long Revision, ModGridPreferences Preferences);
     private sealed record DependencyStatusInput(ApplicationSettings Settings, IReadOnlyList<ModInstallation> DiscoveredMods, IReadOnlySet<ModKey> ActiveMods);
+    private sealed record ConflictAnalysisInput(IReadOnlyList<ModInstallation> DiscoveredMods, IReadOnlySet<ModKey> ActiveMods);
 
     public void Dispose()
     {
         if (disposed) return;
         disposed = true;
+        modProjectionStore?.Dispose();
         autoSave.Dispose();
     }
 }
@@ -1258,12 +1670,24 @@ public sealed class ApplicationSession(ISettingsBootstrapper bootstrapper, IModC
 public sealed record SessionProfile(ProfileId Id, string Name, GameVariant GameVariant, int ModCount);
 public sealed record SessionUpdateCheck(bool Manual, DateTimeOffset CheckedAt, UpdateChannelPreference Channel, UpdateCheckResult? Result, Error? Error)
 {
-    public string Details => Error is not null
-        ? $"Update check failed {CheckedAt.LocalDateTime:g}: {Error.Message}"
-        : Result is null
-            ? "No update check has run in this session."
-            : $"{(Manual ? "Manual" : "Startup")} {Channel} update check {CheckedAt.LocalDateTime:g}: {Result.Message}" +
-              (Result.Release is null ? string.Empty : $"\n{Result.Release.Name}\n{Result.Release.Notes}");
+    public string Details
+    {
+        get
+        {
+            if (Error is not null)
+            {
+                return $"Update check failed {CheckedAt.LocalDateTime:g}: {Error.Message}";
+            }
+
+            if (Result is null)
+            {
+                return "No update check has run in this session.";
+            }
+
+            var summary = $"{(Manual ? "Manual" : "Startup")} {Channel} update check {CheckedAt.LocalDateTime:g}: {Result.Message}";
+            return Result.Release is null ? summary : $"{summary}\n{Result.Release.Name}\n{Result.Release.Notes}";
+        }
+    }
 }
 public sealed record SessionConflict(string Key, string Kind, string Subject, string ParticipantsText, IReadOnlyList<ModKey> Participants, IReadOnlyList<ModConflictFact> Facts);
 public sealed record SessionDependencyDetails(IReadOnlyList<SessionDependencyRelationship> Required, IReadOnlyList<SessionDependencyRelationship> Dependents);
@@ -1288,46 +1712,113 @@ public sealed class SessionModRow : ReactiveObject
     private string workshop = string.Empty;
     private double? downloadProgress;
     private bool isDownloading;
+    private string name;
+    private string state;
+    private int? count;
+    private bool isExpanded;
+    private bool requiresWarOfTheChosen;
+    private PackageId? packageId;
+    private WorkshopId? workshopId;
+    private DuplicateStatus duplicateStatus;
+    private string description = string.Empty;
+    private string descriptorTags = string.Empty;
+    private string descriptorCategory = string.Empty;
+    private string readmePath = string.Empty;
+    private string previewImagePath = string.Empty;
 
-    private SessionModRow(ModKey? key, ModGridGroupKey? groupKey, string name, bool? active, int? explicitOrder, string state, int? count, bool isExpanded, bool requiresWotc, PackageId? packageId, WorkshopId? workshopId, DuplicateStatus duplicateStatus, WorkshopModState? workshopState, string? workshopError, Action<ModKey, bool, int?>? update)
+    private SessionModRow(SessionModRowData data, Action<ModKey, bool, int?>? update)
     {
-        Key = key;
-        GroupKey = groupKey;
-        Name = name;
-        isActive = active;
-        order = explicitOrder;
-        State = state;
-        Count = count;
-        IsExpanded = isExpanded;
-        RequiresWarOfTheChosen = requiresWotc;
-        PackageId = packageId;
-        WorkshopId = workshopId;
-        DuplicateStatus = duplicateStatus;
+        Key = data.Key;
+        GroupKey = data.GroupKey;
+        name = data.Name;
+        isActive = data.Active;
+        order = data.ExplicitOrder;
+        state = data.State;
+        count = data.Count;
+        isExpanded = data.IsExpanded;
+        requiresWarOfTheChosen = data.RequiresWarOfTheChosen;
+        packageId = data.PackageId;
+        workshopId = data.WorkshopId;
+        duplicateStatus = data.DuplicateStatus;
         this.update = update;
-        ApplyWorkshop(workshopState, workshopError);
+        ApplyWorkshop(data.WorkshopState, data.WorkshopError);
     }
 
     public ModKey? Key { get; }
     public ModGridGroupKey? GroupKey { get; }
     public bool IsGroup => Key is null;
-    public string Name { get; }
-    public string State { get; }
-    public int? Count { get; }
-    public bool IsExpanded { get; }
+    public string Name { get => name; private set => this.RaiseAndSetIfChanged(ref name, value); }
+    public string State
+    {
+        get => state;
+        private set
+        {
+            if (state == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref state, value);
+            this.RaisePropertyChanged(nameof(CanActivate));
+            this.RaisePropertyChanged(nameof(IsRetainedMissing));
+        }
+    }
+    public int? Count { get => count; private set => this.RaiseAndSetIfChanged(ref count, value); }
+    public bool IsExpanded
+    {
+        get => isExpanded;
+        private set
+        {
+            if (isExpanded == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref isExpanded, value);
+            this.RaisePropertyChanged(nameof(GroupToggleLabel));
+        }
+    }
     public string GroupToggleLabel => IsExpanded ? "Collapse group" : "Expand group";
-    public bool RequiresWarOfTheChosen { get; }
-    public PackageId? PackageId { get; }
-    public WorkshopId? WorkshopId { get; }
-    public DuplicateStatus DuplicateStatus { get; }
+    public bool RequiresWarOfTheChosen { get => requiresWarOfTheChosen; private set => this.RaiseAndSetIfChanged(ref requiresWarOfTheChosen, value); }
+    public PackageId? PackageId { get => packageId; private set => this.RaiseAndSetIfChanged(ref packageId, value); }
+    public WorkshopId? WorkshopId
+    {
+        get => workshopId;
+        private set
+        {
+            if (workshopId == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref workshopId, value);
+            this.RaisePropertyChanged(nameof(WorkshopUrl));
+            this.RaisePropertyChanged(nameof(IsRetainedMissing));
+        }
+    }
+    public DuplicateStatus DuplicateStatus
+    {
+        get => duplicateStatus;
+        private set
+        {
+            if (duplicateStatus == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref duplicateStatus, value);
+            this.RaisePropertyChanged(nameof(CanActivate));
+        }
+    }
     public bool CanActivate => !IsGroup && State != "Missing" && DuplicateStatus is DuplicateStatus.None or DuplicateStatus.Preferred;
     public bool IsRetainedMissing => State == "Missing" && WorkshopId.HasValue;
     public string Source => Key?.Source.ToString() ?? string.Empty;
     public string Location => Key?.LocationIdentity ?? string.Empty;
-    public string Description { get; private init; } = string.Empty;
-    public string DescriptorTags { get; private init; } = string.Empty;
-    public string DescriptorCategory { get; private init; } = string.Empty;
-    public string ReadmePath { get; private init; } = string.Empty;
-    public string PreviewImagePath { get; private init; } = string.Empty;
+    public string Description { get => description; private set => this.RaiseAndSetIfChanged(ref description, value); }
+    public string DescriptorTags { get => descriptorTags; private set => this.RaiseAndSetIfChanged(ref descriptorTags, value); }
+    public string DescriptorCategory { get => descriptorCategory; private set => this.RaiseAndSetIfChanged(ref descriptorCategory, value); }
+    public string ReadmePath { get => readmePath; private set => this.RaiseAndSetIfChanged(ref readmePath, value); }
+    public string PreviewImagePath { get => previewImagePath; private set => this.RaiseAndSetIfChanged(ref previewImagePath, value); }
     public string WorkshopUrl => WorkshopId is { } id ? $"https://steamcommunity.com/sharedfiles/filedetails/?id={id.Value}" : string.Empty;
     public string Workshop { get => workshop; private set => this.RaiseAndSetIfChanged(ref workshop, value); }
     public double? DownloadProgress { get => downloadProgress; private set => this.RaiseAndSetIfChanged(ref downloadProgress, value); }
@@ -1337,9 +1828,16 @@ public sealed class SessionModRow : ReactiveObject
         get => isActive;
         set
         {
-            if (value == true && !CanActivate) return;
+            if (value == true && !CanActivate)
+            {
+                return;
+            }
+
             this.RaiseAndSetIfChanged(ref isActive, value);
-            if (Key is { } key && value.HasValue) update?.Invoke(key, value.Value, order);
+            if (Key is { } key && value.HasValue)
+            {
+                update?.Invoke(key, value.Value, order);
+            }
         }
     }
     public int? Order
@@ -1348,7 +1846,10 @@ public sealed class SessionModRow : ReactiveObject
         set
         {
             this.RaiseAndSetIfChanged(ref order, value);
-            if (Key is { } key) update?.Invoke(key, isActive ?? false, value);
+            if (Key is { } key)
+            {
+                update?.Invoke(key, isActive ?? false, value);
+            }
         }
     }
 
@@ -1356,24 +1857,88 @@ public sealed class SessionModRow : ReactiveObject
     {
         IsDownloading = state?.Update == UpdateStatus.Downloading;
         DownloadProgress = state?.Download?.Fraction is { } fraction ? fraction * 100 : null;
-        Workshop = error is not null ? $"Unavailable: {error}" : state?.Update switch
+        Workshop = error is not null ? $"Unavailable: {error}" : GetWorkshopStatus(state);
+    }
+
+    private static string GetWorkshopStatus(WorkshopModState? state)
+    {
+        if (state is null) return string.Empty;
+
+        return state.Update switch
         {
             UpdateStatus.Current => "Current",
             UpdateStatus.Available => "Update available",
             UpdateStatus.Downloading when state.Download?.Fraction is { } downloadFraction => $"Downloading {downloadFraction:P0}",
             UpdateStatus.Downloading => state.RawState.HasFlag(WorkshopItemState.DownloadPending) ? "Queued" : "Downloading",
-            _ => state is null ? string.Empty : "Unknown"
+            _ => "Unknown"
         };
     }
 
-    public static SessionModRow Group(ModGridGroupKey key, string name, int count, bool isExpanded) => new(null, key, name, null, null, string.Empty, count, isExpanded, false, null, null, DuplicateStatus.None, null, null, null);
-    public static SessionModRow Mod(ModGridItem item, ModInstallation installation, string state, WorkshopModState? workshop, string? workshopError, Action<ModKey, bool, int?> update) => new(item.Key, null, item.DisplayName, item.IsActive, item.ExplicitOrder, state, null, false, item.RequiresWarOfTheChosen, item.PackageId, item.WorkshopId, item.Status.Duplicate, workshop, workshopError, update)
+    internal void RefreshGroup(string groupName, int itemCount, bool expanded)
     {
-        Description = installation.Metadata?.Description ?? string.Empty,
-        DescriptorTags = string.Join(", ", installation.Metadata?.DescriptorTags ?? []),
-        DescriptorCategory = installation.Metadata?.DescriptorCategory ?? string.Empty,
-        ReadmePath = installation.Metadata?.ReadmePath ?? string.Empty,
-        PreviewImagePath = installation.Metadata?.PreviewImagePath ?? string.Empty
-    };
-    public static SessionModRow Retained(RetainedWorkshopItem item, string? workshopStatus = null) => new(item.LastKnownKey, null, item.Name, false, null, "Missing", null, false, false, item.PackageId, item.WorkshopId, DuplicateStatus.None, null, workshopStatus ?? "Retained intent; subscription/download state unknown", null);
+        Name = groupName;
+        Count = itemCount;
+        IsExpanded = expanded;
+    }
+
+    internal void RefreshMod(ModGridItem item, ModInstallation installation, string semanticState, WorkshopModState? workshopState, string? workshopError)
+    {
+        Name = item.DisplayName;
+        SetProjectedDraft(item.IsActive, item.ExplicitOrder);
+        State = semanticState;
+        RequiresWarOfTheChosen = item.RequiresWarOfTheChosen;
+        PackageId = item.PackageId;
+        WorkshopId = item.WorkshopId;
+        DuplicateStatus = item.Status.Duplicate;
+        ApplyInstallationMetadata(installation);
+        ApplyWorkshop(workshopState, workshopError);
+    }
+
+    internal void RefreshRetained(RetainedWorkshopItem item, string? workshopStatus)
+    {
+        Name = item.Name;
+        PackageId = item.PackageId;
+        WorkshopId = item.WorkshopId;
+        Workshop = workshopStatus ?? "Retained intent; subscription/download state unknown";
+    }
+
+    private void SetProjectedDraft(bool active, int? explicitOrder)
+    {
+        this.RaiseAndSetIfChanged(ref isActive, active, nameof(IsActive));
+        this.RaiseAndSetIfChanged(ref order, explicitOrder, nameof(Order));
+    }
+
+    private void ApplyInstallationMetadata(ModInstallation installation)
+    {
+        Description = installation.Metadata?.Description ?? string.Empty;
+        DescriptorTags = string.Join(", ", installation.Metadata?.DescriptorTags ?? []);
+        DescriptorCategory = installation.Metadata?.DescriptorCategory ?? string.Empty;
+        ReadmePath = installation.Metadata?.ReadmePath ?? string.Empty;
+        PreviewImagePath = installation.Metadata?.PreviewImagePath ?? string.Empty;
+    }
+
+    public static SessionModRow Group(ModGridGroupKey key, string name, int count, bool isExpanded) => new(new SessionModRowData(null, key, name, null, null, string.Empty, count, isExpanded, false, null, null, DuplicateStatus.None, null, null), null);
+    public static SessionModRow Mod(ModGridItem item, ModInstallation installation, string state, WorkshopModState? workshop, string? workshopError, Action<ModKey, bool, int?> update)
+    {
+        var row = new SessionModRow(new SessionModRowData(item.Key, null, item.DisplayName, item.IsActive, item.ExplicitOrder, state, null, false, item.RequiresWarOfTheChosen, item.PackageId, item.WorkshopId, item.Status.Duplicate, workshop, workshopError), update);
+        row.ApplyInstallationMetadata(installation);
+        return row;
+    }
+    public static SessionModRow Retained(RetainedWorkshopItem item, string? workshopStatus = null) => new(new SessionModRowData(item.LastKnownKey, null, item.Name, false, null, "Missing", null, false, false, item.PackageId, item.WorkshopId, DuplicateStatus.None, null, workshopStatus ?? "Retained intent; subscription/download state unknown"), null);
+
+    private sealed record SessionModRowData(
+        ModKey? Key,
+        ModGridGroupKey? GroupKey,
+        string Name,
+        bool? Active,
+        int? ExplicitOrder,
+        string State,
+        int? Count,
+        bool IsExpanded,
+        bool RequiresWarOfTheChosen,
+        PackageId? PackageId,
+        WorkshopId? WorkshopId,
+        DuplicateStatus DuplicateStatus,
+        WorkshopModState? WorkshopState,
+        string? WorkshopError);
 }

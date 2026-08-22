@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:AAML.Avalonia"
              x:Class="AAML.Avalonia.ModsView"
+             x:Name="ModsViewRoot"
              x:DataType="local:ModsViewModel"
              AutomationProperties.AutomationId="ModsPage">
   <Grid Margin="24,12,24,24" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="10">
@@ -97,7 +98,7 @@
                   <Button AutomationProperties.AutomationId="ModsGroupToggle"
                           AutomationProperties.Name="{Binding GroupToggleLabel}"
                           IsVisible="{Binding IsGroup}"
-                          Command="{Binding $parent[local:ModsView].((local:ModsViewModel)DataContext).ToggleGroup}"
+                          Command="{Binding ElementName=ModsViewRoot, Path=DataContext.ToggleGroup}"
                           CommandParameter="{Binding GroupKey}"
                           Content="{Binding GroupToggleLabel}" />
                   <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />

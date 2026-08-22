@@ -5,6 +5,9 @@ namespace AAML.Application.Mods.Grid;
 /// <summary>Filters, sorts, groups, and flattens immutable mod grid read models.</summary>
 public static class ModGridProjector
 {
+    private const string MatchBucketValue = "match";
+    private const string OtherBucketValue = "other";
+
     public static IReadOnlyList<ModGridRow> Project(
         IEnumerable<ModGridItem> source,
         ModGridLookups lookups,
@@ -18,15 +21,11 @@ public static class ModGridProjector
         collapsedGroups ??= new HashSet<ModGridGroupKey>();
         var categories = lookups.Categories.ToDictionary(category => category.Id);
         var tags = lookups.Tags.ToDictionary(tag => tag.Id);
-        var filtered = source
-            .Where(item => query.IncludeHidden || !item.IsHidden)
-            .Where(item => MatchesSearch(item, query.SearchText, categories, tags))
-            .Where(item => query.StateFilters.Count == 0 || query.StateFilters.Contains(ModGridSemanticStatePolicy.Calculate(item)))
-            .ToArray();
+        var filtered = source.Where(item => Matches(item, query, categories, tags)).ToArray();
 
         if (query.Grouping is ModGridGrouping.NoGrouping)
         {
-            return Sort(filtered, query.Sort, categories)
+            return filtered.Order(CreateComparer(query.Sort, categories))
                 .Select(item => (ModGridRow)new ModGridModRow(item.Key, null, item, ModGridSemanticStatePolicy.Calculate(item)))
                 .ToArray();
         }
@@ -35,7 +34,7 @@ public static class ModGridProjector
         var rows = new List<ModGridRow>();
         foreach (var group in OrderGroups(groups, query.Grouping))
         {
-            var items = Sort(group, query.Sort, categories).ToArray();
+            var items = group.Order(CreateComparer(query.Sort, categories)).ToArray();
             var expanded = !collapsedGroups.Contains(group.Key.Key);
             rows.Add(new ModGridGroupRow(group.Key.Key, group.Key.Label, items.Length, expanded));
             if (expanded)
@@ -46,6 +45,38 @@ public static class ModGridProjector
 
         return rows;
     }
+
+    /// <summary>Evaluates the filter portion of a grid query for one immutable item.</summary>
+    public static bool Matches(ModGridItem item, ModGridQuery query, ModGridLookups lookups)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(lookups);
+        return CreatePredicate(query, lookups)(item);
+    }
+
+    /// <summary>Creates the filter predicate used by the grid projection without rebuilding lookup dictionaries per item.</summary>
+    public static Func<ModGridItem, bool> CreatePredicate(ModGridQuery query, ModGridLookups lookups)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(lookups);
+        var categories = lookups.Categories.ToDictionary(category => category.Id);
+        var tags = lookups.Tags.ToDictionary(tag => tag.Id);
+        return item => Matches(item, query, categories, tags);
+    }
+
+    /// <summary>Creates the deterministic comparer used by the grid projection.</summary>
+    public static IComparer<ModGridItem> CreateComparer(ModGridSort sort, ModGridLookups lookups)
+    {
+        ArgumentNullException.ThrowIfNull(sort);
+        ArgumentNullException.ThrowIfNull(lookups);
+        return CreateComparer(sort, lookups.Categories.ToDictionary(category => category.Id));
+    }
+
+    private static bool Matches(ModGridItem item, ModGridQuery query, IReadOnlyDictionary<CategoryId, Category> categories, IReadOnlyDictionary<TagId, Tag> tags) =>
+        (query.IncludeHidden || !item.IsHidden) &&
+        MatchesSearch(item, query.SearchText, categories, tags) &&
+        (query.StateFilters.Count == 0 || query.StateFilters.Contains(ModGridSemanticStatePolicy.Calculate(item)));
 
     private static bool MatchesSearch(
         ModGridItem item,
@@ -64,12 +95,8 @@ public static class ModGridProjector
 
     private static bool Contains(string value, string term) => value.Contains(term, StringComparison.OrdinalIgnoreCase);
 
-    private static IEnumerable<ModGridItem> Sort(
-        IEnumerable<ModGridItem> source,
-        ModGridSort sort,
-        IReadOnlyDictionary<CategoryId, Category> categories)
-    {
-        var comparer = Comparer<ModGridItem>.Create((left, right) =>
+    private static IComparer<ModGridItem> CreateComparer(ModGridSort sort, IReadOnlyDictionary<CategoryId, Category> categories) =>
+        Comparer<ModGridItem>.Create((left, right) =>
         {
             var primary = ComparePrimary(left, right, sort.Column, categories);
             if (primary != 0) return sort.Direction == SortDirection.Ascending ? primary : -primary;
@@ -80,8 +107,6 @@ public static class ModGridProjector
             var sourceComparison = left.Key.Source.CompareTo(right.Key.Source);
             return sourceComparison != 0 ? sourceComparison : StringComparer.Ordinal.Compare(left.Key.LocationIdentity, right.Key.LocationIdentity);
         });
-        return source.Order(comparer);
-    }
 
     private static int ComparePrimary(
         ModGridItem left,
@@ -115,11 +140,11 @@ public static class ModGridProjector
     {
         ModGridGrouping.CategoryGrouping => CategoryBucket(item.CategoryId, categories),
         ModGridGrouping.StateGrouping state => ModGridSemanticStatePolicy.Calculate(item) == state.State
-            ? new GroupBucket(new ModGridGroupKey($"state:{state.State}", "match"), state.State.ToString(), 0, "match")
-            : new GroupBucket(new ModGridGroupKey($"state:{state.State}", "other"), "Other", 1, "other"),
+            ? new GroupBucket(new ModGridGroupKey($"state:{state.State}", MatchBucketValue), state.State.ToString(), 0, MatchBucketValue)
+            : new GroupBucket(new ModGridGroupKey($"state:{state.State}", OtherBucketValue), "Other", 1, OtherBucketValue),
         ModGridGrouping.TagGrouping tag => item.TagIds.Contains(tag.Tag)
-            ? new GroupBucket(new ModGridGroupKey($"tag:{tag.Tag.Value}", "match"), tags.GetValueOrDefault(tag.Tag)?.Name ?? tag.Tag.Value, 0, "match")
-            : new GroupBucket(new ModGridGroupKey($"tag:{tag.Tag.Value}", "other"), "Without tag", 1, "other"),
+            ? new GroupBucket(new ModGridGroupKey($"tag:{tag.Tag.Value}", MatchBucketValue), tags.GetValueOrDefault(tag.Tag)?.Name ?? tag.Tag.Value, 0, MatchBucketValue)
+            : new GroupBucket(new ModGridGroupKey($"tag:{tag.Tag.Value}", OtherBucketValue), "Without tag", 1, OtherBucketValue),
         _ => throw new ArgumentOutOfRangeException(nameof(grouping), grouping, null)
     };
 

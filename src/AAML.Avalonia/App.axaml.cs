@@ -61,6 +61,9 @@ namespace AAML.Avalonia;
 
 public sealed partial class App : global::Avalonia.Application
 {
+    private const string AppIconRelativeResourcePath = "Assets/aaml-icon.png";
+    private const string SingleInstanceMutexName = "AAML.Avalonia.SingleInstance";
+
     internal static IReadOnlyList<Type> SectionTypes { get; } =
     [
         typeof(DashboardViewModel), typeof(ModsViewModel), typeof(ConflictsViewModel), typeof(ConfigurationsViewModel),
@@ -76,6 +79,22 @@ public sealed partial class App : global::Avalonia.Application
     {
         IconControlProviderRegistry.Register(new OptrisIconControlProvider(), asDefault: true);
         var shellLogger = new LoggerConfiguration().WriteTo.Console().CreateLogger();
+        var services = CreateServices(shellLogger);
+        provider = services.BuildServiceProvider();
+        FatalErrorCoordinator.Configure(provider.GetRequiredService<IApplicationDiagnostics>(), provider.GetRequiredService<IExternalLauncher>(), provider.GetRequiredService<IApplicationUiController>());
+
+        if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            base.OnFrameworkInitializationCompleted();
+            return;
+        }
+
+        ConfigureDesktopLifetime(desktop, shellLogger);
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    private static ServiceCollection CreateServices(ILogger shellLogger)
+    {
         var services = new ServiceCollection();
         RegisterPlatform(services);
         services.AddZafiroShell(logger: shellLogger);
@@ -88,56 +107,91 @@ public sealed partial class App : global::Avalonia.Application
         services.AddSingleton<ILaunchArgumentPresetService, LaunchArgumentPresetService>();
         services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
         services.AddSingleton<ApplicationSession>();
-
-        provider = services.BuildServiceProvider();
-        FatalErrorCoordinator.Configure(provider.GetRequiredService<IApplicationDiagnostics>(), provider.GetRequiredService<IExternalLauncher>(), provider.GetRequiredService<IApplicationUiController>());
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-        {
-            var shell = provider.GetRequiredService<IHierarchicalShell>();
-            var session = provider.GetRequiredService<ApplicationSession>();
-            var startupSettings = ShellStartupSettings.LoadAsync(provider.GetRequiredService<ISettingsRepository>(), CancellationToken.None).GetAwaiter().GetResult();
-            var ui = provider.GetRequiredService<IApplicationUiController>();
-            ui.ApplyTheme(startupSettings?.Theme ?? ThemePreference.System);
-            ui.ApplyAccessibilitySizing(startupSettings?.TextScale ?? ApplicationSettingsDefaults.DefaultTextScale, startupSettings?.IconScale ?? ApplicationSettingsDefaults.DefaultIconScale);
-            if (startupSettings is not null) session.PrimeSettings(startupSettings);
-            // A failed or missing preflight load is retried once by full initialization after the Expanded shell is visible.
-            var shellView = new AamlShellView(startupSettings?.NavigationRailMode ?? AAML.Application.Settings.NavigationRailMode.Expanded) { DataContext = shell };
-            if (startupSettings is not null) shellView.Configure(session);
-            desktop.MainWindow = new Window
-            {
-                Title = "Avalonia Alternative Mod Launcher",
-                Icon = CreateWindowIcon(),
-                Width = 1180,
-                Height = 760,
-                MinWidth = 820,
-                MinHeight = 560,
-                Content = shellView
-            };
-            shellView.LayoutUpdated += (_, _) => AssignShellNavigationAutomationIds(shellView);
-            desktop.MainWindow.Opened += async (_, _) =>
-            {
-                var initialized = await session.InitializeAsync(CancellationToken.None);
-                if (!initialized.IsSuccess) return;
-                shellView.Configure(session);
-                ui.ApplyTheme(session.Settings!.Theme);
-                ui.ApplyAccessibilitySizing(session.Settings.TextScale, session.Settings.IconScale);
-                if (!session.Settings.AllowMultipleInstances)
-                {
-                    singleInstanceMutex = new Mutex(true, "AAML.Avalonia.SingleInstance", out var created);
-                    if (!created) desktop.Shutdown();
-                }
-            };
-            desktop.Exit += async (_, _) =>
-            {
-                if (provider is not null) await provider.DisposeAsync();
-                if (singleInstanceMutex is not null) { try { singleInstanceMutex.ReleaseMutex(); } catch (ApplicationException) { } singleInstanceMutex.Dispose(); }
-                await shellLogger.DisposeAsync();
-            };
-        }
-        base.OnFrameworkInitializationCompleted();
+        return services;
     }
 
-    internal static WindowIcon CreateWindowIcon() => new(AssetLoader.Open(new Uri("avares://AAML.Avalonia/Assets/aaml-icon.png")));
+    private void ConfigureDesktopLifetime(IClassicDesktopStyleApplicationLifetime desktop, ILogger shellLogger)
+    {
+        if (provider is null) return;
+
+        var shell = provider.GetRequiredService<IHierarchicalShell>();
+        var session = provider.GetRequiredService<ApplicationSession>();
+        var startupSettings = ShellStartupSettings.LoadAsync(provider.GetRequiredService<ISettingsRepository>(), CancellationToken.None).GetAwaiter().GetResult();
+        var ui = provider.GetRequiredService<IApplicationUiController>();
+        ApplyStartupSettings(ui, startupSettings, session);
+
+        var shellView = CreateShellView(shell, startupSettings, session);
+        ConfigureMainWindow(desktop, shellView);
+
+        shellView.LayoutUpdated += (_, _) => AssignShellNavigationAutomationIds(shellView);
+        desktop.MainWindow!.Opened += async (_, _) => await OnMainWindowOpenedAsync(session, ui, desktop, shellView);
+        desktop.Exit += async (_, _) =>
+        {
+            if (provider is not null) await provider.DisposeAsync();
+            if (singleInstanceMutex is not null)
+            {
+                singleInstanceMutex.ReleaseMutex();
+                singleInstanceMutex.Dispose();
+            }
+            if (shellLogger is IDisposable disposableLogger)
+            {
+                disposableLogger.Dispose();
+            }
+        };
+    }
+
+    private static void ApplyStartupSettings(IApplicationUiController ui, ApplicationSettings? startupSettings, ApplicationSession session)
+    {
+        ui.ApplyTheme(startupSettings?.Theme ?? ThemePreference.System);
+        ui.ApplyAccessibilitySizing(startupSettings?.TextScale ?? ApplicationSettingsDefaults.DefaultTextScale, startupSettings?.IconScale ?? ApplicationSettingsDefaults.DefaultIconScale);
+        if (startupSettings is not null) session.PrimeSettings(startupSettings);
+    }
+
+    private static AamlShellView CreateShellView(IHierarchicalShell shell, ApplicationSettings? startupSettings, ApplicationSession session)
+    {
+        var shellView = new AamlShellView(startupSettings?.NavigationRailMode ?? AAML.Application.Settings.NavigationRailMode.Expanded) { DataContext = shell };
+        if (startupSettings is not null) shellView.Configure(session);
+        return shellView;
+    }
+
+    private static void ConfigureMainWindow(IClassicDesktopStyleApplicationLifetime desktop, AamlShellView shellView)
+    {
+        desktop.MainWindow = new Window
+        {
+            Title = "Avalonia Alternative Mod Launcher",
+            Icon = CreateWindowIcon(),
+            Width = 1180,
+            Height = 760,
+            MinWidth = 820,
+            MinHeight = 560,
+            Content = shellView
+        };
+    }
+
+    private async Task OnMainWindowOpenedAsync(ApplicationSession session, IApplicationUiController ui, IClassicDesktopStyleApplicationLifetime desktop, AamlShellView shellView)
+    {
+        var initialized = await session.InitializeAsync(CancellationToken.None);
+        if (!initialized.IsSuccess) return;
+
+        shellView.Configure(session);
+        ui.ApplyTheme(session.Settings!.Theme);
+        ui.ApplyAccessibilitySizing(session.Settings.TextScale, session.Settings.IconScale);
+        if (session.Settings.AllowMultipleInstances) return;
+
+        singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out var created);
+        if (!created) desktop.Shutdown();
+    }
+
+    internal static WindowIcon CreateWindowIcon()
+    {
+        var assemblyName = typeof(App).Assembly.GetName().Name ?? nameof(AAML.Avalonia);
+        var iconUri = new UriBuilder("avares", assemblyName)
+        {
+            Path = AppIconRelativeResourcePath,
+        }.Uri;
+
+        return new WindowIcon(AssetLoader.Open(iconUri));
+    }
 
     private static void AssignShellNavigationAutomationIds(AamlShellView shellView)
     {

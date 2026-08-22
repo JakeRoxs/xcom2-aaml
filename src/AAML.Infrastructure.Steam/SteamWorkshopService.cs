@@ -8,6 +8,10 @@ namespace AAML.Infrastructure.Steam;
 /// <summary>Maps Steam UGC operations to application-owned Workshop contracts.</summary>
 public sealed class SteamWorkshopService : IWorkshopService
 {
+    private const string InvalidWorkshopIdCode = "steam.invalid_id";
+    private const string InvalidWorkshopIdMessage = "Workshop ID must be nonzero.";
+    private const string InvalidWorkshopIdsMessage = "Workshop IDs must be nonzero.";
+
     private readonly SteamClientLifetime lifetime;
     private readonly ISteamUgcApi ugc;
     private readonly ISteamCallbacks callbacks;
@@ -25,7 +29,7 @@ public sealed class SteamWorkshopService : IWorkshopService
     {
         if (publishedFileId.Value == 0)
         {
-            return Result<WorkshopItem?>.Failure(new Error("steam.invalid_id", "Workshop ID must be nonzero.", ErrorKind.Validation));
+            return Result<WorkshopItem?>.Failure(new Error(InvalidWorkshopIdCode, InvalidWorkshopIdMessage, ErrorKind.Validation));
         }
 
         var result = await GetItemsAsync([publishedFileId], null, cancellationToken).ConfigureAwait(false);
@@ -42,7 +46,7 @@ public sealed class SteamWorkshopService : IWorkshopService
         ArgumentNullException.ThrowIfNull(publishedFileIds);
         if (publishedFileIds.Any(id => id.Value == 0))
         {
-            return Result<IReadOnlyList<WorkshopItem>>.Failure(new Error("steam.invalid_id", "Workshop IDs must be nonzero.", ErrorKind.Validation));
+            return Result<IReadOnlyList<WorkshopItem>>.Failure(new Error(InvalidWorkshopIdCode, InvalidWorkshopIdsMessage, ErrorKind.Validation));
         }
 
         var requested = publishedFileIds.Distinct().ToArray();
@@ -100,7 +104,7 @@ public sealed class SteamWorkshopService : IWorkshopService
     {
         if (publishedFileId.Value == 0)
         {
-            return Result<WorkshopLocalState>.Failure(new Error("steam.invalid_id", "Workshop ID must be nonzero.", ErrorKind.Validation));
+            return Result<WorkshopLocalState>.Failure(new Error(InvalidWorkshopIdCode, InvalidWorkshopIdMessage, ErrorKind.Validation));
         }
 
         var started = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
@@ -129,7 +133,7 @@ public sealed class SteamWorkshopService : IWorkshopService
     {
         if (publishedFileId.Value == 0)
         {
-            return Result.Failure(new Error("steam.invalid_id", "Workshop ID must be nonzero.", ErrorKind.Validation));
+            return Result.Failure(new Error(InvalidWorkshopIdCode, InvalidWorkshopIdMessage, ErrorKind.Validation));
         }
 
         var started = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
@@ -156,7 +160,7 @@ public sealed class SteamWorkshopService : IWorkshopService
 
     private async Task<Result> MutateSubscriptionAsync(WorkshopId id, SteamSubscriptionMutation mutation, CancellationToken cancellationToken)
     {
-        if (id.Value == 0) return Result.Failure(new Error("steam.invalid_id", "Workshop ID must be nonzero.", ErrorKind.Validation));
+        if (id.Value == 0) return Result.Failure(new Error(InvalidWorkshopIdCode, InvalidWorkshopIdMessage, ErrorKind.Validation));
         var started = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false); if (!started.IsSuccess) return started;
         try
         {
@@ -264,9 +268,7 @@ public sealed class SteamWorkshopService : IWorkshopService
             for (uint index = 0; index < completion.ResultCount; index++)
             {
                 if (!ugc.TryGetQueryItem(handle, index, out var snapshot) || snapshot.PublishedFileId == 0)
-                {
-                    return Failure("steam.query_invalid_data", "Steam returned malformed Workshop data.", ErrorKind.InvalidData);
-                }
+                    continue;
 
                 items.Add(new WorkshopItem(
                     new WorkshopId(snapshot.PublishedFileId),

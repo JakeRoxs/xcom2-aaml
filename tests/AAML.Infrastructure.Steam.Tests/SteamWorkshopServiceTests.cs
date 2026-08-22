@@ -34,7 +34,7 @@ public sealed class SteamWorkshopServiceTests
         result.Value[1].CreatedAt.Should().Be(DateTimeOffset.FromUnixTimeSeconds(100));
         result.Value[1].PreviewUrl.Should().Be("https://cdn.example.test/preview.png");
         ugc.ReleaseCount.Should().Be(1);
-        await api.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(api);
         api.ShutdownCount.Should().Be(1);
     }
 
@@ -51,7 +51,7 @@ public sealed class SteamWorkshopServiceTests
         var result = await service.GetItemAsync(new WorkshopId(1), TestContext.CancellationToken);
 
         result.Value!.PreviewUrl.Should().BeNull();
-        await api.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(api);
     }
 
     [TestMethod]
@@ -65,7 +65,26 @@ public sealed class SteamWorkshopServiceTests
 
         result.Error!.Code.Should().Be("steam.query_configuration_failed");
         ugc.ReleaseCount.Should().Be(1);
-        await api.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(api);
+    }
+
+    [TestMethod]
+    public async Task Query_SkipsMalformedRowsWithoutDiscardingValidMetadata()
+    {
+        var api = new FakeClientApi();
+        var ugc = new FakeUgcApi
+        {
+            Items = [new SteamWorkshopSnapshot(1, "Invalid", []), new SteamWorkshopSnapshot(2, "Valid", [3])],
+            InvalidIndices = [0]
+        };
+        var service = CreateService(api, ugc, new FakeCallbacks { ResultCount = 2 });
+
+        var result = await service.GetItemsAsync([new WorkshopId(1), new WorkshopId(2)], null, TestContext.CancellationToken);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().ContainSingle(item => item.PublishedFileId == new WorkshopId(2));
+        ugc.ReleaseCount.Should().Be(1);
+        await DisposeLifetimeAsync(api);
     }
 
     [TestMethod]
@@ -78,7 +97,7 @@ public sealed class SteamWorkshopServiceTests
         var result = await service.GetItemAsync(new WorkshopId(1), TestContext.CancellationToken);
 
         result.Error!.Code.Should().Be("steam.query_cleanup_failed");
-        await api.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(api);
     }
 
     [TestMethod]
@@ -91,7 +110,7 @@ public sealed class SteamWorkshopServiceTests
 
         result.Error!.Code.Should().Be("steam.not_running");
         api.RunCallbackCount.Should().Be(0);
-        await api.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(api);
         api.ShutdownCount.Should().Be(0);
     }
 
@@ -108,14 +127,23 @@ public sealed class SteamWorkshopServiceTests
         result.IsSuccess.Should().BeTrue();
         ugc.CreatedBatches.Select(batch => batch.Count).Should().Equal(50, 1);
         ugc.ReleaseCount.Should().Be(2);
-        await api.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(api);
     }
 
     [TestMethod]
     public async Task CallerCancellation_IsDistinctAndReleasesQuery()
     {
         using var source = new CancellationTokenSource();
-        var callbacks = new FakeCallbacks { Wait = async token => { await source.CancelAsync(); await Task.Delay(Timeout.InfiniteTimeSpan, token); return null!; } };
+        var callbacks = new FakeCallbacks
+        {
+            Wait = async token =>
+            {
+                await source.CancelAsync();
+                await Task.Delay(50, token);
+                if (token.IsCancellationRequested) throw new OperationCanceledException(token);
+                return new SteamQueryCompletion(new SteamQueryHandle(1), false, false, 0, "Cancelled");
+            }
+        };
         var api = new FakeClientApi();
         var ugc = new FakeUgcApi();
         var service = CreateService(api, ugc, callbacks);
@@ -124,7 +152,7 @@ public sealed class SteamWorkshopServiceTests
 
         result.Error!.Kind.Should().Be(ErrorKind.Cancelled);
         ugc.ReleaseCount.Should().Be(1);
-        await api.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(api);
     }
 
     [TestMethod]
@@ -153,7 +181,7 @@ public sealed class SteamWorkshopServiceTests
         download.IsSuccess.Should().BeTrue();
         ugc.LastDownload.Should().Be((1UL, true));
         persona.Value.Should().Be("Fixture User");
-        await api.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(api);
     }
 
     [TestMethod]
@@ -163,13 +191,13 @@ public sealed class SteamWorkshopServiceTests
         var rejectedUgc = new FakeUgcApi { DownloadAccepted = false };
         var rejected = CreateService(rejectedApi, rejectedUgc, new FakeCallbacks());
         (await rejected.RequestDownloadAsync(new WorkshopId(1), true, TestContext.CancellationToken)).Error!.Code.Should().Be("steam.download_rejected");
-        await rejectedApi.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(rejectedApi);
 
         var throwingApi = new FakeClientApi();
         var throwingUgc = new FakeUgcApi { DownloadException = new InvalidOperationException("fixture") };
         var throwing = CreateService(throwingApi, throwingUgc, new FakeCallbacks());
         (await throwing.RequestDownloadAsync(new WorkshopId(1), true, TestContext.CancellationToken)).Error!.Code.Should().Be("steam.download_failed");
-        await throwingApi.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(throwingApi);
 
         var cancelledApi = new FakeClientApi();
         var cancelledUgc = new FakeUgcApi();
@@ -178,7 +206,7 @@ public sealed class SteamWorkshopServiceTests
         await source.CancelAsync();
         (await cancelled.RequestDownloadAsync(new WorkshopId(1), true, source.Token)).Error!.Kind.Should().Be(ErrorKind.Cancelled);
         cancelledUgc.LastDownload.Should().BeNull();
-        await cancelledApi.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(cancelledApi);
     }
 
     [TestMethod]
@@ -190,10 +218,16 @@ public sealed class SteamWorkshopServiceTests
         (await service.SubscribeAsync(new WorkshopId(42), TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
         (await service.UnsubscribeAsync(new WorkshopId(43), TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
         ugc.SubscriptionRequests.Should().Equal((42UL, true), (43UL, false));
-        await api.Lifetime!.DisposeAsync();
+        await DisposeLifetimeAsync(api);
     }
 
     public TestContext TestContext { get; set; }
+
+    private static async Task DisposeLifetimeAsync(FakeClientApi api)
+    {
+        var lifetime = api.Lifetime ?? throw new InvalidOperationException("Steam client lifetime should be initialized.");
+        await lifetime.DisposeAsync();
+    }
 
     private static SteamWorkshopService CreateService(FakeClientApi api, FakeUgcApi ugc, FakeCallbacks callbacks)
     {
@@ -218,6 +252,7 @@ public sealed class SteamWorkshopServiceTests
     {
         public bool ConfigureSuccess { get; set; } = true;
         public bool ReleaseSuccess { get; set; } = true;
+        public HashSet<uint> InvalidIndices { get; set; } = [];
         public IReadOnlyList<SteamWorkshopSnapshot> Items { get; set; } = [];
         public int ReleaseCount { get; private set; }
         public List<IReadOnlyList<ulong>> CreatedBatches { get; } = [];
@@ -235,15 +270,56 @@ public sealed class SteamWorkshopServiceTests
         public SteamAsyncCall SendQuery(SteamQueryHandle handle) => new(handle.Value);
         public bool TryGetQueryItem(SteamQueryHandle handle, uint index, out SteamWorkshopSnapshot item)
         {
-            if (index < Items.Count) { item = Items[(int)index]; return true; }
-            item = default!; return false;
+            if (InvalidIndices.Contains(index))
+            {
+                item = new SteamWorkshopSnapshot(0, string.Empty, []);
+                return false;
+            }
+
+            if (index < Items.Count)
+            {
+                item = Items[(int)index];
+                return true;
+            }
+
+            item = new SteamWorkshopSnapshot(0, string.Empty, []);
+            return false;
         }
         public bool ReleaseQuery(SteamQueryHandle handle) { ReleaseCount++; return ReleaseSuccess; }
         public IReadOnlyList<ulong> GetSubscribedItems() => Subscriptions;
         public uint GetItemState(ulong id) => State;
-        public bool TryGetInstallInfo(ulong id, out SteamInstallSnapshot install) { install = Install!; return Install is not null; }
-        public bool TryGetDownloadInfo(ulong id, out SteamDownloadSnapshot download) { download = Download!; return Download is not null; }
-        public bool DownloadItem(ulong id, bool highPriority) { if (DownloadException is not null) throw DownloadException; LastDownload = (id, highPriority); return DownloadAccepted; }
+        public bool TryGetInstallInfo(ulong id, out SteamInstallSnapshot install)
+        {
+            if (Install is null)
+            {
+                install = new SteamInstallSnapshot(0, string.Empty, 0);
+                return false;
+            }
+
+            install = Install;
+            return true;
+        }
+        public bool TryGetDownloadInfo(ulong id, out SteamDownloadSnapshot download)
+        {
+            if (Download is null)
+            {
+                download = new SteamDownloadSnapshot(0, 0);
+                return false;
+            }
+
+            download = Download;
+            return true;
+        }
+        public bool DownloadItem(ulong id, bool highPriority)
+        {
+            if (DownloadException is not null)
+            {
+                throw DownloadException;
+            }
+
+            LastDownload = (id, highPriority);
+            return DownloadAccepted;
+        }
         public SteamAsyncCall SubscribeItem(ulong id) { SubscriptionRequests.Add((id, true)); return new(11); }
         public SteamAsyncCall UnsubscribeItem(ulong id) { SubscriptionRequests.Add((id, false)); return new(12); }
     }

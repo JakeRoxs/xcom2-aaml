@@ -35,12 +35,39 @@
       <Setter Property="Margin" Value="2" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
+    <Style Selector="Image.shell-game-icon">
+      <Setter Property="Width" Value="48" />
+      <Setter Property="Height" Value="48" />
+      <Setter Property="Margin" Value="8,8,8,4" />
+      <Setter Property="Opacity" Value="0.9" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.1" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Image.shell-game-icon:pointerover">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="RenderTransform" Value="scale(1.06)" />
+    </Style>
   </UserControl.Styles>
   <Grid ColumnDefinitions="Auto,*">
     <Border Classes="shell-rail"
             Classes.compact="{Binding !IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}">
-      <Grid RowDefinitions="*,Auto">
-        <zac:SectionStrip Orientation="Vertical"
+      <Grid RowDefinitions="Auto,*,Auto">
+        <Image Grid.Row="0"
+               Classes="shell-game-icon"
+               Source="{Binding ActiveGameIcon, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+               ToolTip.Tip="{Binding ActiveGameIconTooltip, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+               AutomationProperties.AutomationId="ShellActiveGameIcon"
+               AutomationProperties.Name="{Binding ActiveGameIconTooltip, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}" />
+        <zac:SectionStrip Grid.Row="1"
+                          Orientation="Vertical"
                           ItemTemplate="{StaticResource ShellRailItemTemplate}"
                           IconSize="{DynamicResource AamlShellIconSize}"
                           ItemPadding="4,8"
@@ -48,7 +75,7 @@
                           Padding="2"
                           Sections="{Binding RootLevel.Sections}"
                           SelectedSection="{Binding RootLevel.SelectedSection.Value, Mode=TwoWay}" />
-        <Panel Grid.Row="1">
+        <Panel Grid.Row="2">
           <ToggleButton AutomationProperties.AutomationId="ShellRailCollapseButton" Classes="shell-icon"
                         AutomationProperties.Name="Collapse navigation"
                         Margin="8"

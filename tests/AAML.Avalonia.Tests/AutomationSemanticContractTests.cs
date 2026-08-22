@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Avalonia.Media;
 using FluentAssertions;
 
 namespace AAML.Avalonia.Tests;
@@ -51,7 +52,7 @@ public sealed class AutomationSemanticContractTests
     {
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var views = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Views"), "*View.axaml")
-            .ToDictionary(path => Path.GetFileName(path)!, XDocument.Load, StringComparer.Ordinal);
+            .ToDictionary(path => Path.GetFileName(path), XDocument.Load, StringComparer.Ordinal);
 
         views["ModsView.axaml"].Descendants().Select(element => (string?)element.Attribute(x + "Name"))
             .Should().NotContain(["ModUpdateSummary", "WorkshopAggregateProgress", "RefreshWorkshopButton", "UpdateSelectedModsButton", "StopWorkshopMonitoringButton"]);
@@ -59,6 +60,20 @@ public sealed class AutomationSemanticContractTests
             .Should().Contain("ModsGrid", "the selection-preservation code-behind still uses this field");
         views["AamlShellView.axaml"].Descendants().Select(element => (string?)element.Attribute(x + "Name"))
             .Should().NotContain("ShellSectionStrip");
+    }
+
+    [TestMethod]
+    public void ActiveGameIconRendersAboveRailToggleInOwnGridRow()
+    {
+        var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "Views", "AamlShellView.axaml"));
+        var icon = document.Descendants().Single(element => Id(element) == "ShellActiveGameIcon");
+        var strip = document.Descendants().Single(element => element.Name.LocalName == "SectionStrip" && (string?)element.Attribute("Sections") == "{Binding RootLevel.Sections}");
+        var toggleButtons = document.Descendants().Where(element => Id(element) is "ShellRailCollapseButton" or "ShellRailExpandButton").ToArray();
+
+        icon.Attribute("Grid.Row")!.Value.Should().Be("0");
+        strip.Attribute("Grid.Row")!.Value.Should().Be("1");
+        toggleButtons.Should().HaveCount(2);
+        toggleButtons.Should().OnlyContain(button => button.Ancestors().Single(element => element.Name.LocalName == "Panel").Attribute("Grid.Row")!.Value == "2");
     }
 
     [TestMethod]

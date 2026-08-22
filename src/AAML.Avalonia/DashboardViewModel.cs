@@ -51,8 +51,19 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
         DiscardPreferences = ReactiveCommand.CreateFromTask(DiscardPreferencesAsync).Enhance(text: "Discard edits", name: "DiscardPreferences");
         ResetAccessibilitySizing = ReactiveCommand.Create(ResetAccessibilitySizingDraft).Enhance(text: "Reset text and icon sizes", name: "ResetAccessibilitySizing");
         ApplyConfiguration = ReactiveCommand.CreateFromTask(async () => (await session.ApplyConfigurationAsync(CancellationToken.None)).IsSuccess ? Result.Success() : Result.Failure(session.Status)).Enhance(text: "Apply configuration", name: "ApplyConfiguration");
-        Launch = ReactiveCommand.CreateFromTask(async () => { var result = await session.LaunchAsync(CancellationToken.None); if (result.IsSuccess && session.Settings?.CloseAfterLaunch == true) ui.Shutdown(); return result.IsSuccess ? Result.Success() : Result.Failure(session.Status); }).Enhance(text: "Launch game", name: "LaunchGame");
+        Launch = ReactiveCommand.CreateFromTask(LaunchAsync).Enhance(text: "Launch game", name: "LaunchGame");
         SetPresets(presetService.BuiltIns);
+    }
+
+    private async Task<Result> LaunchAsync()
+    {
+        var result = await session.LaunchAsync(CancellationToken.None);
+        if (result.IsSuccess && session.Settings?.CloseAfterLaunch == true)
+        {
+            ui.Shutdown();
+        }
+
+        return result.IsSuccess ? Result.Success() : Result.Failure(session.Status);
     }
 
     public IReadOnlyList<GameVariant> Games { get; } = Enum.GetValues<GameVariant>();
@@ -67,18 +78,150 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
     public string Status => session.Status;
     public string Origin => session.Origin?.ToString() ?? "Not loaded";
     public string GameInstallationPath { get => gameInstallationPath; set => this.RaiseAndSetIfChanged(ref gameInstallationPath, value); }
-    public GameVariant SelectedGame { get => selectedGame; set { if (selectedGame == value) return; this.RaiseAndSetIfChanged(ref selectedGame, value); RefreshPresets(); } }
-    public bool AllowLaunchWithMissingDependencies { get => allowLaunchWithMissingDependencies; set { if (allowLaunchWithMissingDependencies == value) return; this.RaiseAndSetIfChanged(ref allowLaunchWithMissingDependencies, value); MarkPreferencesDirty(); } }
-    public string LaunchArguments { get => launchArguments; set { if (launchArguments == value) return; this.RaiseAndSetIfChanged(ref launchArguments, value); RefreshPresets(); MarkPreferencesDirty(); } }
-    public string ModRoots { get => modRoots; set { if (modRoots == value) return; this.RaiseAndSetIfChanged(ref modRoots, value); MarkPreferencesDirty(); } }
-    public bool CloseAfterLaunch { get => closeAfterLaunch; set { if (closeAfterLaunch == value) return; this.RaiseAndSetIfChanged(ref closeAfterLaunch, value); MarkPreferencesDirty(); } }
-    public WorkshopStartupRefreshPolicy WorkshopStartupRefresh { get => workshopStartupRefresh; set { if (workshopStartupRefresh == value) return; this.RaiseAndSetIfChanged(ref workshopStartupRefresh, value); MarkPreferencesDirty(); } }
+    public GameVariant SelectedGame
+    {
+        get => selectedGame;
+        set
+        {
+            if (selectedGame == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref selectedGame, value);
+            RefreshPresets();
+        }
+    }
+    public bool AllowLaunchWithMissingDependencies
+    {
+        get => allowLaunchWithMissingDependencies;
+        set
+        {
+            if (allowLaunchWithMissingDependencies == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref allowLaunchWithMissingDependencies, value);
+            MarkPreferencesDirty();
+        }
+    }
+    public string LaunchArguments
+    {
+        get => launchArguments;
+        set
+        {
+            if (launchArguments == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref launchArguments, value);
+            RefreshPresets();
+            MarkPreferencesDirty();
+        }
+    }
+    public string ModRoots
+    {
+        get => modRoots;
+        set
+        {
+            if (modRoots == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref modRoots, value);
+            MarkPreferencesDirty();
+        }
+    }
+    public bool CloseAfterLaunch
+    {
+        get => closeAfterLaunch;
+        set
+        {
+            if (closeAfterLaunch == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref closeAfterLaunch, value);
+            MarkPreferencesDirty();
+        }
+    }
+    public WorkshopStartupRefreshPolicy WorkshopStartupRefresh
+    {
+        get => workshopStartupRefresh;
+        set
+        {
+            if (workshopStartupRefresh == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref workshopStartupRefresh, value);
+            MarkPreferencesDirty();
+        }
+    }
     public IReadOnlyList<WorkshopStartupRefreshPolicy> WorkshopStartupRefreshOptions { get; } = [WorkshopStartupRefreshPolicy.AllMods, WorkshopStartupRefreshPolicy.ActiveMods, WorkshopStartupRefreshPolicy.Manual];
-    public ThemePreference Theme { get => theme; set { if (theme == value) return; this.RaiseAndSetIfChanged(ref theme, value); ui.ApplyTheme(value); MarkPreferencesDirty(); } }
+    public ThemePreference Theme
+    {
+        get => theme;
+        set
+        {
+            if (theme == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref theme, value);
+            ui.ApplyTheme(value);
+            MarkPreferencesDirty();
+        }
+    }
     public IReadOnlyList<ThemePreference> ThemeOptions { get; } = Enum.GetValues<ThemePreference>();
-    public bool AllowMultipleInstances { get => allowMultipleInstances; set { if (allowMultipleInstances == value) return; this.RaiseAndSetIfChanged(ref allowMultipleInstances, value); MarkPreferencesDirty(); } }
-    public bool CheckForUpdates { get => checkForUpdates; set { if (checkForUpdates == value) return; this.RaiseAndSetIfChanged(ref checkForUpdates, value); MarkPreferencesDirty(); } }
-    public UpdateChannelPreference UpdateChannel { get => updateChannel; set { if (updateChannel == value) return; this.RaiseAndSetIfChanged(ref updateChannel, value); MarkPreferencesDirty(); } }
+    public bool AllowMultipleInstances
+    {
+        get => allowMultipleInstances;
+        set
+        {
+            if (allowMultipleInstances == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref allowMultipleInstances, value);
+            MarkPreferencesDirty();
+        }
+    }
+    public bool CheckForUpdates
+    {
+        get => checkForUpdates;
+        set
+        {
+            if (checkForUpdates == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref checkForUpdates, value);
+            MarkPreferencesDirty();
+        }
+    }
+    public UpdateChannelPreference UpdateChannel
+    {
+        get => updateChannel;
+        set
+        {
+            if (updateChannel == value)
+            {
+                return;
+            }
+
+            this.RaiseAndSetIfChanged(ref updateChannel, value);
+            MarkPreferencesDirty();
+        }
+    }
     public IReadOnlyList<UpdateChannelPreference> UpdateChannelOptions { get; } = Enum.GetValues<UpdateChannelPreference>();
     public decimal TextScale
     {
@@ -181,12 +324,19 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
             var revision = preferencesRevision;
             var arguments = LaunchArguments.Split(["\r\n", "\n", "\r"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(value => new LaunchArgument(value)).ToArray();
             var roots = ModRoots.Split(["\r\n", "\n", "\r"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var allowMissing = AllowLaunchWithMissingDependencies;
-            var closeAfter = CloseAfterLaunch;
-            var startupRefresh = WorkshopStartupRefresh;
-            var selectedTheme = Theme;
-            var multipleInstances = AllowMultipleInstances;
-            var result = await session.SavePreferencesAsync(arguments, roots, allowMissing, closeAfter, startupRefresh, selectedTheme, multipleInstances, CheckForUpdates, UpdateChannel, TextScale, IconScale, cancellationToken);
+            var request = new ApplicationSession.PreferenceSaveRequest(
+                arguments,
+                roots,
+                AllowLaunchWithMissingDependencies,
+                CloseAfterLaunch,
+                WorkshopStartupRefresh,
+                Theme,
+                AllowMultipleInstances,
+                CheckForUpdates,
+                UpdateChannel,
+                TextScale,
+                IconScale);
+            var result = await session.SavePreferencesAsync(request, cancellationToken);
             if (result.IsSuccess && revision == preferencesRevision) preferencesDirty = false;
             return result;
         }
@@ -332,9 +482,13 @@ public sealed class LaunchArgumentPresetOptionViewModel(DashboardViewModel owner
         get => isActive;
         set
         {
-            if (isActive == value) return;
+            if (isActive == value)
+            {
+                return;
+            }
+
             owner.SetPresetActive(Preset, value, Value);
-            this.RaisePropertyChanged(nameof(IsActive));
+            this.RaiseAndSetIfChanged(ref isActive, value);
         }
     }
 

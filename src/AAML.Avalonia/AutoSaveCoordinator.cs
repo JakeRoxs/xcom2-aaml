@@ -115,11 +115,15 @@ public sealed class AutoSaveCoordinator : IDisposable
                 if (!active.TryGetValue(owner, out var sources)) active[owner] = sources = [];
                 sources.Add(source);
             }
-            if (registrations.TryGetValue(owner, out var registration))
-                if (await registration.IsDirtyAsync(source.Token).ConfigureAwait(false))
-                    await registration.Save(source.Token).ConfigureAwait(false);
+
+            if (!registrations.TryGetValue(owner, out var registration)) return;
+            if (!await registration.IsDirtyAsync(source.Token).ConfigureAwait(false)) return;
+            await registration.Save(source.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (source.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (source.IsCancellationRequested)
+        {
+            // Save cancellation is expected when a newer change supersedes the pending debounce window.
+        }
         finally
         {
             lock (sync)
@@ -149,8 +153,14 @@ public sealed class AutoSaveCoordinator : IDisposable
 
     private static void CancelSource(CancellationTokenSource? source)
     {
-        try { source?.Cancel(); }
-        catch (ObjectDisposedException) { }
+        try
+        {
+            source?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The source may already be disposed if another cancellation race wins.
+        }
     }
 
     private sealed record Registration(Func<bool> IsDirty, Func<CancellationToken, Task<bool>> IsDirtyAsync, Func<CancellationToken, Task<Result>> Save);

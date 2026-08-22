@@ -51,6 +51,19 @@ public sealed class ModDependencyServiceTests
     }
 
     [TestMethod]
+    public async Task PartialMetadata_PreservesValidRootsAndMarksOnlyMissingRowsUnavailable()
+    {
+        var valid = Id(1); var malformed = Id(2);
+        var service = new ModDependencyService(new FakeWorkshop(new WorkshopItem(valid, "Valid", [])));
+
+        var result = await service.EvaluateAsync([valid, malformed], [valid, malformed], [valid, malformed], new Dictionary<WorkshopId, IReadOnlySet<WorkshopId>>(), TestContext.CancellationToken);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Issues.Should().ContainSingle(issue => issue.Kind == ModDependencyIssueKind.MetadataUnavailable && issue.Parent == malformed);
+        result.Value.Graph.Should().ContainKey(valid).WhoseValue.Should().BeEmpty();
+    }
+
+    [TestMethod]
     public async Task Metadata_IsCachedAcrossEvaluations()
     {
         var a = Id(1);
@@ -73,11 +86,11 @@ public sealed class ModDependencyServiceTests
         public int QueryCalls { get; private set; }
         public FakeWorkshop(params WorkshopItem[] items) => this.items = items.ToDictionary(item => item.PublishedFileId);
         public FakeWorkshop(Error failure) { this.failure = failure; items = []; }
-        public Task<Result<IReadOnlyList<WorkshopItem>>> GetItemsAsync(IReadOnlyList<WorkshopId> ids, IProgress<OperationProgress>? progress, CancellationToken cancellationToken)
+        public Task<Result<IReadOnlyList<WorkshopItem>>> GetItemsAsync(IReadOnlyList<WorkshopId> publishedFileIds, IProgress<OperationProgress>? progress, CancellationToken cancellationToken)
         {
             QueryCalls++;
             return Task.FromResult(failure is null
-                ? Result<IReadOnlyList<WorkshopItem>>.Success(ids.Where(items.ContainsKey).Select(id => items[id]).ToArray())
+                ? Result<IReadOnlyList<WorkshopItem>>.Success(publishedFileIds.Where(items.ContainsKey).Select(id => items[id]).ToArray())
                 : Result<IReadOnlyList<WorkshopItem>>.Failure(failure));
         }
         public Task<Result<WorkshopItem?>> GetItemAsync(WorkshopId publishedFileId, CancellationToken cancellationToken) => throw new NotSupportedException();
