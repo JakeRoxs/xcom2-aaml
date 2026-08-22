@@ -1,0 +1,82 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "tools/**"
+      - "eng/**"
+      - "AAML.slnx"
+      - "global.json"
+      - ".github/workflows/codeql.yml"
+      - "readme.md"
+      - "LICENSE"
+    paths-ignore:
+      - "xcom2-launcher/**"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "tools/**"
+      - "eng/**"
+      - "AAML.slnx"
+      - "global.json"
+      - ".github/workflows/codeql.yml"
+      - "readme.md"
+      - "LICENSE"
+    paths-ignore:
+      - "xcom2-launcher/**"
+  schedule:
+    - cron: "40 4 * * 4"
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build-mode: manual
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Restore AAML solution
+        shell: bash
+        run: dotnet restore AAML.slnx --locked-mode
+
+      - name: Build AAML solution
+        shell: bash
+        run: dotnet build AAML.slnx -c Release -p:Platform="Any CPU" --no-restore
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

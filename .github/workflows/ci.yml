@@ -44,10 +44,10 @@ jobs:
         with:
           global-json-file: global.json
           cache: true
-          cache-dependency-path: '**/packages.lock.json'
-      - run: dotnet restore AAML.slnx --locked-mode
-      - run: dotnet build AAML.slnx --configuration Release --no-restore
-      - run: dotnet test AAML.slnx --configuration Release --no-build --filter TestCategory!=SteamLive
+          cache-dependency-path: "**/packages.lock.json"
+      - run: dotnet restore AAML.slnx -p:Platform="Any CPU" --locked-mode
+      - run: dotnet build AAML.slnx -p:Configuration=Release -p:Platform="Any CPU" --no-restore
+      - run: dotnet test AAML.slnx -p:Configuration=Release -p:Platform="Any CPU" --no-build --filter TestCategory!=SteamLive
       - shell: pwsh
         run: ./eng/test-brand-assets.ps1
       - if: runner.os == 'Linux'
@@ -80,7 +80,7 @@ jobs:
         with:
           global-json-file: global.json
           cache: true
-          cache-dependency-path: '**/packages.lock.json'
+          cache-dependency-path: "**/packages.lock.json"
       - name: Verify package policy inputs are tracked
         shell: pwsh
         run: |
