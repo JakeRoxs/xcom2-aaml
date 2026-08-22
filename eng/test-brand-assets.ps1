@@ -106,7 +106,7 @@ try {
     $app = Get-Content -LiteralPath (Join-Path $root 'src/AAML.Avalonia/App.axaml.cs') -Raw
     if ($project -notmatch '<ApplicationIcon>\.\./\.\./assets/branding/generated/aaml\.ico</ApplicationIcon>') { throw 'Windows executable ApplicationIcon is not wired to the AAML ICO.' }
     $fatal = Get-Content -LiteralPath (Join-Path $root 'src/AAML.Avalonia/FatalErrorCoordinator.cs') -Raw
-    if ($app -notmatch 'Icon\s*=\s*CreateWindowIcon\(' -or $app -notmatch 'internal static WindowIcon CreateWindowIcon\(' -or $app -notmatch 'avares://AAML\.Avalonia/Assets/aaml-icon\.png') { throw 'Avalonia main window icon is not wired through the shared icon factory.' }
+    if ($app -notmatch 'Icon\s*=\s*CreateWindowIcon\(' -or $app -notmatch 'internal static WindowIcon CreateWindowIcon\(' -or $app -notmatch 'new UriBuilder\("avares", assemblyName\)' -or $app -notmatch 'Path\s*=\s*AppIconRelativeResourcePath' -or $app -notmatch 'AssetLoader\.Open\(iconUri\)') { throw 'Avalonia main window icon is not wired through the shared icon factory.' }
     if ($fatal -notmatch 'Icon\s*=\s*App\.CreateWindowIcon\(') { throw 'Avalonia fatal-error window does not use the shared icon factory.' }
 
     $desktop = (Get-Content -LiteralPath (Join-Path $root 'eng/linux/io.github.jakeroxs.xcom2_aaml.desktop') -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
