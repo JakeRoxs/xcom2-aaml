@@ -115,6 +115,30 @@ public sealed class SteamWorkshopServiceTests
     }
 
     [TestMethod]
+    public async Task StartAsync_WritesSteamAppIdFileAndRestoresItOnDispose()
+    {
+        var api = new FakeClientApi();
+        var lifetime = new SteamClientLifetime(api, new SteamOptions(TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(1), AppId: 268500));
+        var appIdPath = Path.Combine(AppContext.BaseDirectory, "steam_appid.txt");
+        if (File.Exists(appIdPath)) File.Delete(appIdPath);
+
+        try
+        {
+            var started = await lifetime.StartAsync(TestContext.CancellationToken);
+            started.IsSuccess.Should().BeTrue();
+            File.Exists(appIdPath).Should().BeTrue();
+            (await File.ReadAllTextAsync(appIdPath, TestContext.CancellationToken)).Should().Be("268500");
+
+            await lifetime.DisposeAsync();
+            File.Exists(appIdPath).Should().BeFalse();
+        }
+        finally
+        {
+            if (File.Exists(appIdPath)) File.Delete(appIdPath);
+        }
+    }
+
+    [TestMethod]
     public async Task FiftyOneDistinctIds_AreSplitIntoTwoQueries()
     {
         var api = new FakeClientApi();

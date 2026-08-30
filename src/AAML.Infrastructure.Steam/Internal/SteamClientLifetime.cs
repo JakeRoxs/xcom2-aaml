@@ -11,7 +11,10 @@ internal sealed class SteamClientLifetime(ISteamClientApi api, SteamOptions opti
     private bool disposed;
     private string? previousSteamAppId;
     private string? previousSteamGameId;
+    private string? previousSteamAppIdFileContent;
+    private bool previousSteamAppIdFileExists;
     private bool environmentConfigured;
+    private readonly string steamAppIdFilePath = Path.Combine(AppContext.BaseDirectory, "steam_appid.txt");
 
     public CancellationToken StoppingToken => stopping.Token;
 
@@ -93,9 +96,17 @@ internal sealed class SteamClientLifetime(ISteamClientApi api, SteamOptions opti
         if (environmentConfigured || options.AppId == 0) return;
         previousSteamAppId = Environment.GetEnvironmentVariable("SteamAppId");
         previousSteamGameId = Environment.GetEnvironmentVariable("SteamGameId");
+        previousSteamAppIdFileExists = File.Exists(steamAppIdFilePath);
+        if (previousSteamAppIdFileExists)
+        {
+            previousSteamAppIdFileContent = File.ReadAllText(steamAppIdFilePath);
+        }
+
         var value = options.AppId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Environment.SetEnvironmentVariable("SteamAppId", value);
         Environment.SetEnvironmentVariable("SteamGameId", value);
+
+        File.WriteAllText(steamAppIdFilePath, value);
         environmentConfigured = true;
     }
 
@@ -104,6 +115,18 @@ internal sealed class SteamClientLifetime(ISteamClientApi api, SteamOptions opti
         if (!environmentConfigured) return;
         Environment.SetEnvironmentVariable("SteamAppId", previousSteamAppId);
         Environment.SetEnvironmentVariable("SteamGameId", previousSteamGameId);
+
+        if (previousSteamAppIdFileExists)
+        {
+            File.WriteAllText(steamAppIdFilePath, previousSteamAppIdFileContent ?? string.Empty);
+        }
+        else if (File.Exists(steamAppIdFilePath))
+        {
+            File.Delete(steamAppIdFilePath);
+        }
+
+        previousSteamAppIdFileContent = null;
+        previousSteamAppIdFileExists = false;
         environmentConfigured = false;
     }
 

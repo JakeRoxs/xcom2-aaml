@@ -145,5 +145,42 @@ public sealed class LinuxSteamFilesystemDiscoveryTests
         }
     }
 
+    [TestMethod]
+    public async Task HomeLayout_WithVarHomeSteamRoot_IsDiscovered()
+    {
+        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Filesystem Steam discovery requires Linux.");
+
+        var originalHome = Environment.GetEnvironmentVariable("HOME");
+        var actualHome = Path.Combine(Path.GetTempPath(), "home", "jake");
+        var alternateHome = Path.Combine(Path.GetTempPath(), "var", "home", "jake");
+        var root = Path.Combine(alternateHome, ".local", "share", "Steam");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("HOME", actualHome);
+            var steamApps = Directory.CreateDirectory(Path.Combine(root, "steamapps"));
+            Directory.CreateDirectory(Path.Combine(root, "steamapps", "common", "XCOM 2"));
+            Directory.CreateDirectory(Path.Combine(root, "steamapps", "workshop", "content", "268500", "900000001"));
+            Directory.CreateDirectory(Path.Combine(root, "steamapps", "compatdata", "268500", "pfx", "drive_c", "users", "steamuser"));
+            await File.WriteAllTextAsync(Path.Combine(steamApps.FullName, "libraryfolders.vdf"), $"\"libraryfolders\" {{ \"0\" {{ \"path\" \"{root.Replace("\\", "/")}\" }} }}");
+            await File.WriteAllTextAsync(Path.Combine(steamApps.FullName, "appmanifest_268500.acf"), "\"AppState\" { \"appid\" \"268500\" \"name\" \"XCOM 2\" \"installdir\" \"XCOM 2\" }");
+
+            var discovery = new LinuxSteamFilesystemDiscovery(new LinuxPhysicalPathResolver());
+            var result = await discovery.DiscoverAsync(new SteamDiscoveryRequest([SteamAppId.Xcom2]), TestContext.CancellationToken);
+
+            result.IsSuccess.Should().BeTrue();
+            result.Value!.Applications.Should().ContainSingle(application => application.InstallDirectoryExists);
+            result.Value.WorkshopLocations.Should().ContainSingle();
+            result.Value.ProtonPrefixes.Should().ContainSingle(prefix => prefix.WineUsers.Contains("steamuser"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("HOME", originalHome);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+            if (Directory.Exists(Path.Combine(Path.GetTempPath(), "var", "home"))) Directory.Delete(Path.Combine(Path.GetTempPath(), "var", "home"), true);
+            if (Directory.Exists(actualHome)) Directory.Delete(actualHome, true);
+        }
+    }
+
     public TestContext TestContext { get; set; }
 }

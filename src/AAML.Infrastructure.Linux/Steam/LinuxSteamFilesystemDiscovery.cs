@@ -181,19 +181,57 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
         if (explicitRoots is not null) foreach (var root in explicitRoots) if (semantics.NormalizeIdentity(root).IsSuccess) yield return semantics.NormalizeIdentity(root).Value!;
         if (explicitRoots is not null && explicitRoots.Count > 0) yield break;
 
-        var home = Environment.GetEnvironmentVariable("HOME");
+        var homeAliases = EnumerateHomeAliases(Environment.GetEnvironmentVariable("HOME")).ToArray();
         var data = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-        if (string.IsNullOrWhiteSpace(home) || !semantics.NormalizeIdentity(home).IsSuccess) yield break;
         if (!string.IsNullOrWhiteSpace(data) && semantics.NormalizeIdentity(data).IsSuccess)
         {
             yield return data.TrimEnd('/') + "/Steam";
             yield return data.TrimEnd('/') + "/steam";
         }
-        yield return home.TrimEnd('/') + "/.local/share/Steam";
-        yield return home.TrimEnd('/') + "/.steam/root";
-        yield return home.TrimEnd('/') + "/.steam/steam";
-        yield return home.TrimEnd('/') + "/.var/app/com.valvesoftware.Steam/.local/share/Steam";
-        yield return home.TrimEnd('/') + "/.var/app/com.valvesoftware.Steam/.steam/root";
+
+        foreach (var home in homeAliases)
+        {
+            yield return home + "/.local/share/Steam";
+            yield return home + "/.steam/root";
+            yield return home + "/.steam/steam";
+            yield return home + "/.var/app/com.valvesoftware.Steam/.local/share/Steam";
+            yield return home + "/.var/app/com.valvesoftware.Steam/.steam/root";
+        }
+    }
+
+    private static IEnumerable<string> EnumerateHomeAliases(string? home)
+    {
+        if (string.IsNullOrWhiteSpace(home)) yield break;
+
+        var semantics = new LinuxPathSemantics();
+        var trimmed = home.TrimEnd('/');
+        var candidates = new HashSet<string>(StringComparer.Ordinal)
+        {
+            trimmed
+        };
+
+        var swapped = SwapHomeSegments(trimmed);
+        if (swapped is not null) candidates.Add(swapped);
+
+        foreach (var candidate in candidates)
+        {
+            if (semantics.NormalizeIdentity(candidate).IsSuccess)
+                yield return semantics.NormalizeIdentity(candidate).Value!;
+        }
+    }
+
+    private static string? SwapHomeSegments(string path)
+    {
+        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length < 2) return null;
+
+        if (parts.Length >= 3 && parts[^3] == "var" && parts[^2] == "home")
+            return "/" + string.Join('/', [.. parts[..^3], "home", parts[^1]]);
+
+        if (parts[^2] == "home")
+            return "/" + string.Join('/', [.. parts[..^2], "var", "home", parts[^1]]);
+
+        return null;
     }
 
     private Result<SteamGameDiscovery> Merge(IReadOnlyList<SteamGameDiscovery> discoveries) => Result<SteamGameDiscovery>.Success(discoveries.First());
