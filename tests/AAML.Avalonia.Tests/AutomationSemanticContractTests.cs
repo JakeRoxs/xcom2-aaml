@@ -67,13 +67,39 @@ public sealed class AutomationSemanticContractTests
     {
         var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "Views", "AamlShellView.axaml"));
         var icon = document.Descendants().Single(element => Id(element) == "ShellActiveGameIcon");
+        var gameItem = icon.Ancestors().Single(element => element.Name.LocalName == "Grid" && element.Attribute("Classes") is { } classes && classes.Value.Contains("shell-game-item"));
         var strip = document.Descendants().Single(element => element.Name.LocalName == "SectionStrip" && (string?)element.Attribute("Sections") == "{Binding RootLevel.Sections}");
         var toggleButtons = document.Descendants().Where(element => Id(element) is "ShellRailCollapseButton" or "ShellRailExpandButton").ToArray();
 
-        icon.Attribute("Grid.Row")!.Value.Should().Be("0");
+        gameItem.Attribute("Grid.Row")!.Value.Should().Be("0");
         strip.Attribute("Grid.Row")!.Value.Should().Be("1");
         toggleButtons.Should().HaveCount(2);
         toggleButtons.Should().OnlyContain(button => button.Ancestors().Single(element => element.Name.LocalName == "Panel").Attribute("Grid.Row")!.Value == "2");
+    }
+
+    [TestMethod]
+    public void GameIconIsAClickableButtonThatOpensAGameSelectorPopup()
+    {
+        var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "Views", "AamlShellView.axaml"));
+        var icon = document.Descendants().Single(element => Id(element) == "ShellActiveGameIcon");
+
+        icon.Name.LocalName.Should().Be("Button", "the game icon must be clickable to swap games");
+        icon.Attribute("Click")!.Value.Should().Be("OnGameIconButtonClicked");
+
+        var popup = document.Descendants().Single(element => element.Name.LocalName == "Popup");
+        popup.Descendants().Single(element => (string?)element.Attribute("Click") == "OnGameOptionClicked").Attribute("Tag")!.Value.Should().Be("{Binding Variant}");
+        popup.Descendants().Any(element => (string?)element.Attribute("ItemsSource") is { } source && source.Contains("GameOptions")).Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void GameIconShowsAChallengeBadgeWhenChallengeModeIsActive()
+    {
+        var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "Views", "AamlShellView.axaml"));
+        var icon = document.Descendants().Single(element => Id(element) == "ShellActiveGameIcon");
+        var badge = icon.Descendants().Single(element => element.Name.LocalName == "Border" && (string?)element.Attribute("Classes") == "shell-game-challenge-badge");
+
+        badge.Attribute("IsVisible")!.Value.Should().Be("{Binding IsChallengeMode, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}");
+        badge.Descendants().Single(element => element.Name.LocalName == "TextBlock").Attribute("Text")!.Value.Should().Be("Challenge");
     }
 
     [TestMethod]

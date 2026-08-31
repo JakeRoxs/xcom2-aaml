@@ -67,6 +67,7 @@ public sealed class ApplicationSession(IServiceProvider serviceProvider) : React
     private string status = "Not initialized";
     private bool initialized;
     private IReadOnlyList<ModInstallation> discoveredMods = [];
+    private readonly Dictionary<string, IReadOnlyList<ModInstallation>> modDiscoveryCache = [];
     private readonly Dictionary<ModKey, ModIntentEdit> modDrafts = [];
     private readonly Dictionary<ModKey, DependencyStatus> dependencyStatuses = [];
     private readonly HashSet<ModKey> conflictingMods = [];
@@ -225,7 +226,7 @@ public sealed class ApplicationSession(IServiceProvider serviceProvider) : React
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value;
         Status = $"Selected {game}";
-        return await RefreshModsAndConfigurationsAsync(cancellationToken);
+        return await RefreshModsAndConfigurationsAsync(cancellationToken, forceRefresh: false);
     }
 
     public async Task<Result> SetGameInstallationAsync(string installationPath, CancellationToken cancellationToken)
@@ -305,27 +306,54 @@ public sealed class ApplicationSession(IServiceProvider serviceProvider) : React
         return await RefreshModsAndConfigurationsAsync(cancellationToken);
     }
 
-    public async Task<Result> RefreshModsAsync(CancellationToken cancellationToken)
+    public async Task<Result> RefreshModsAsync(CancellationToken cancellationToken, bool forceRefresh = true)
     {
         await modRefreshGate.WaitAsync(cancellationToken);
         try
         {
             if (Settings is null) return NotInitializedFailure();
-            Status = "Discovering mods";
-            var result = await catalog.DiscoverAsync(Settings.ModRootLocations, null, cancellationToken);
-            if (!result.IsSuccess) { Status = result.Error!.Message; diagnostics.Write(LocalLogLevel.Warning, "mods.discovery_failed", result.Error.Message, new Dictionary<string, string> { ["code"] = result.Error.Code }); return Result.Failure(result.Error); }
-            await uiDispatcher.InvokeAsync(() => ApplyDiscoverySnapshot(result.Value!), cancellationToken);
-            await RefreshDependencyStatusesAsync(cancellationToken);
-            var conflictInput = await uiDispatcher.InvokeAsync(() => new ConflictAnalysisInput(discoveredMods.ToArray(), EffectiveActiveModKeys()), cancellationToken);
-            var conflictResult = await conflictService.AnalyzeAsync(conflictInput.DiscoveredMods, conflictInput.ActiveMods, cancellationToken);
-            if (!conflictResult.IsSuccess) { Status = conflictResult.Error!.Message; return Result.Failure(conflictResult.Error); }
-            ApplyConflicts(conflictResult.Value!);
-            ProjectMods(modSearchText, groupModsByCategory);
+            var cacheKey = ComputeModDiscoveryKey(Settings.ModRootLocations);
+            IReadOnlyList<ModInstallation>? cached = null;
+            if (!forceRefresh)
+            {
+                modDiscoveryCache.TryGetValue(cacheKey, out cached);
+            }
+            IReadOnlyList<ModInstallation> snapshot;
+            if (cached is not null)
+            {
+                snapshot = cached;
+            }
+            else
+            {
+                Status = "Discovering mods";
+                var result = await catalog.DiscoverAsync(Settings.ModRootLocations, null, cancellationToken);
+                if (!result.IsSuccess) { Status = result.Error!.Message; diagnostics.Write(LocalLogLevel.Warning, "mods.discovery_failed", result.Error.Message, new Dictionary<string, string> { ["code"] = result.Error.Code }); return Result.Failure(result.Error); }
+                snapshot = result.Value!;
+                modDiscoveryCache[cacheKey] = snapshot;
+            }
+            var usedCache = cached is not null;
+            var applied = await ApplyDiscoveredModsAsync(snapshot, cancellationToken);
+            if (!applied.IsSuccess) return applied;
             Status = $"Discovered {discoveredMods.Count:N0} mods";
-            diagnostics.Write(LocalLogLevel.Information, "mods.discovery_completed", "Mod discovery completed.", new Dictionary<string, string> { ["count"] = discoveredMods.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            diagnostics.Write(LocalLogLevel.Information, "mods.discovery_completed", "Mod discovery completed.", new Dictionary<string, string> { ["count"] = discoveredMods.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), ["cached"] = usedCache.ToString() });
             return Result.Success();
         }
         finally { modRefreshGate.Release(); }
+    }
+
+    private static string ComputeModDiscoveryKey(IReadOnlyList<string> roots) =>
+        string.Join("|", roots.Where(root => !string.IsNullOrWhiteSpace(root)).OrderBy(root => root, StringComparer.OrdinalIgnoreCase));
+
+    private async Task<Result> ApplyDiscoveredModsAsync(IReadOnlyList<ModInstallation> snapshot, CancellationToken cancellationToken)
+    {
+        await uiDispatcher.InvokeAsync(() => ApplyDiscoverySnapshot(snapshot), cancellationToken);
+        await RefreshDependencyStatusesAsync(cancellationToken);
+        var conflictInput = await uiDispatcher.InvokeAsync(() => new ConflictAnalysisInput(discoveredMods.ToArray(), EffectiveActiveModKeys()), cancellationToken);
+        var conflictResult = await conflictService.AnalyzeAsync(conflictInput.DiscoveredMods, conflictInput.ActiveMods, cancellationToken);
+        if (!conflictResult.IsSuccess) { Status = conflictResult.Error!.Message; return Result.Failure(conflictResult.Error); }
+        ApplyConflicts(conflictResult.Value!);
+        ProjectMods(modSearchText, groupModsByCategory);
+        return Result.Success();
     }
 
     private void ApplyDiscoverySnapshot(IReadOnlyList<ModInstallation> snapshot)
@@ -353,9 +381,9 @@ public sealed class ApplicationSession(IServiceProvider serviceProvider) : React
         }
     }
 
-    public async Task<Result> RefreshModsAndConfigurationsAsync(CancellationToken cancellationToken)
+    public async Task<Result> RefreshModsAndConfigurationsAsync(CancellationToken cancellationToken, bool forceRefresh = true)
     {
-        var mods = await RefreshModsAsync(cancellationToken).ConfigureAwait(false);
+        var mods = await RefreshModsAsync(cancellationToken, forceRefresh).ConfigureAwait(false);
         return mods.IsSuccess ? await RefreshConfigurationDocumentsAsync(cancellationToken).ConfigureAwait(false) : mods;
     }
 

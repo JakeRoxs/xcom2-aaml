@@ -281,8 +281,9 @@ public sealed partial class App : global::Avalonia.Application
         services.AddSingleton<ILegacyLaunchArgumentSuggestionRepository>(_ => new LegacyLaunchArgumentSuggestionRepository(
             Path.Combine(paths.ConfigurationDirectory, "legacy-migration-v1.json")));
         services.AddSingleton<IAtomicTextWriter, AtomicTextWriter>();
+        var applicationDirectory = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
         services.AddSingleton<ILegacySettingsImporter>(_ => new LegacySettingsFileImporter(
-            [Path.Combine(AppContext.BaseDirectory, "settings.json")],
+            [Path.Combine(applicationDirectory, "settings.json")],
             (_, path) => semantics.NormalizeIdentity(path),
             Path.Combine(paths.ConfigurationDirectory, "legacy-migration-v1.json")));
         services.AddSingleton<ISettingsBootstrapper, SettingsBootstrapper>();

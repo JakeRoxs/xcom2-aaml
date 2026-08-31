@@ -1,5 +1,7 @@
 using global::Avalonia;
 using global::Avalonia.Controls;
+using global::Avalonia.Input;
+using global::Avalonia.Interactivity;
 using global::Avalonia.Platform;
 using global::Avalonia.Media;
 using global::Avalonia.Media.Imaging;
@@ -18,10 +20,15 @@ public sealed partial class AamlShellView : UserControl
         AvaloniaProperty.RegisterDirect<AamlShellView, IImage?>(nameof(ActiveGameIcon), o => o.ActiveGameIcon, unsetValue: null);
     public static readonly DirectProperty<AamlShellView, string> ActiveGameIconTooltipProperty =
         AvaloniaProperty.RegisterDirect<AamlShellView, string>(nameof(ActiveGameIconTooltip), o => o.ActiveGameIconTooltip, unsetValue: string.Empty);
+    public static readonly DirectProperty<AamlShellView, string> ActiveGameDisplayNameProperty =
+        AvaloniaProperty.RegisterDirect<AamlShellView, string>(nameof(ActiveGameDisplayName), o => o.ActiveGameDisplayName, unsetValue: string.Empty);
+    public static readonly DirectProperty<AamlShellView, bool> IsChallengeModeProperty =
+        AvaloniaProperty.RegisterDirect<AamlShellView, bool>(nameof(IsChallengeMode), o => o.IsChallengeMode);
     private ApplicationSession? session;
     private bool synchronizing;
     private bool railModeChanged;
     private GameVariant? activeGame;
+    private readonly Dictionary<GameVariant, IImage?> gameIconCache = new();
 
     public AamlShellView() : this(NavigationRailMode.Expanded) { }
 
@@ -48,53 +55,84 @@ public sealed partial class AamlShellView : UserControl
             var previousGame = activeGame;
             var previousIcon = ActiveGameIcon;
             var previousTooltip = ActiveGameIconTooltip;
+            var previousDisplayName = ActiveGameDisplayName;
+            var previousChallengeMode = IsChallengeMode;
             activeGame = value;
             RaisePropertyChanged(ActiveGameProperty, previousGame, value);
             RaisePropertyChanged(ActiveGameIconProperty, previousIcon, ActiveGameIcon);
             RaisePropertyChanged(ActiveGameIconTooltipProperty, previousTooltip, ActiveGameIconTooltip);
+            RaisePropertyChanged(ActiveGameDisplayNameProperty, previousDisplayName, ActiveGameDisplayName);
+            RaisePropertyChanged(IsChallengeModeProperty, previousChallengeMode, IsChallengeMode);
         }
     }
 
     public string ActiveGameIconTooltip
     {
-        get => activeGame switch
+        get => ActiveGameDisplayName;
+    }
+
+    public string ActiveGameDisplayName
+    {
+        get => activeGame is null ? "AAML" : GameVariantDisplay.GetDisplayName(activeGame.Value);
+    }
+
+    public bool IsChallengeMode
+    {
+        get => GameVariantDisplay.IsChallengeMode(activeGame);
+    }
+
+    public IReadOnlyList<GameOption> GameOptions
+    {
+        get => Enum.GetValues<GameVariant>()
+            .Select(variant => new GameOption(
+                variant,
+                GameVariantDisplay.GetSelectorDisplayName(variant),
+                GetGameIcon(variant),
+                variant == activeGame))
+            .ToArray();
+    }
+
+    private IImage? GetGameIcon(GameVariant game)
+    {
+        if (!gameIconCache.TryGetValue(game, out var icon))
         {
-            GameVariant.XCom2 => "XCOM 2",
-            GameVariant.XCom2WarOfTheChosen => "XCOM 2: War of the Chosen",
-            GameVariant.XCom2WarOfTheChosenChallengeMode => "XCOM 2: WOTC Challenge Mode",
-            GameVariant.ChimeraSquad => "Chimera Squad",
-            _ => "AAML"
+            icon = LoadGameIcon(game);
+            gameIconCache[game] = icon;
+        }
+
+        return icon;
+    }
+
+    private static IImage? LoadGameIcon(GameVariant? game)
+    {
+        var iconPath = game switch
+        {
+            GameVariant.XCom2 => "Assets/games/game-xcom2.png",
+            GameVariant.XCom2WarOfTheChosen => "Assets/games/game-xcom2-wotc.png",
+            GameVariant.XCom2WarOfTheChosenChallengeMode => "Assets/games/game-xcom2-wotc-challenge.png",
+            GameVariant.ChimeraSquad => "Assets/games/game-chimera.png",
+            _ => "Assets/aaml-icon.png"
         };
+
+        var assemblyName = typeof(App).Assembly.GetName().Name ?? nameof(AAML.Avalonia);
+        var iconUri = new UriBuilder("avares", assemblyName)
+        {
+            Path = iconPath
+        }.Uri;
+
+        try
+        {
+            return new Bitmap(AssetLoader.Open(iconUri));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     public IImage? ActiveGameIcon
     {
-        get
-        {
-            var fileName = activeGame switch
-            {
-                GameVariant.XCom2 => "game-xcom2.png",
-                GameVariant.XCom2WarOfTheChosen => "game-xcom2-wotc.png",
-                GameVariant.XCom2WarOfTheChosenChallengeMode => "game-xcom2-wotc-challenge.png",
-                GameVariant.ChimeraSquad => "game-chimera.png",
-                _ => "aaml-icon.png"
-            };
-
-            var assemblyName = typeof(App).Assembly.GetName().Name ?? nameof(AAML.Avalonia);
-            var iconUri = new UriBuilder("avares", assemblyName)
-            {
-                Path = $"Assets/games/{fileName}"
-            }.Uri;
-
-            try
-            {
-                return new Bitmap(AssetLoader.Open(iconUri));
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
+        get => activeGame is null ? LoadGameIcon(null) : GetGameIcon(activeGame.Value);
     }
 
     public void Configure(ApplicationSession applicationSession)
@@ -121,6 +159,62 @@ public sealed partial class AamlShellView : UserControl
         if (e.PropertyName == nameof(ApplicationSession.Settings) && session is { Settings: { } settings })
         {
             ActiveGame = settings.SelectedGame;
+        }
+    }
+
+    private void OnGameIconButtonClicked(object? sender, RoutedEventArgs e)
+    {
+        if (GameSelectorPopup is not { } popup) return;
+        popup.IsOpen = !popup.IsOpen;
+    }
+
+    private async void OnGameOptionClicked(object? sender, RoutedEventArgs e)
+    {
+        CloseGameSelector();
+
+        if (sender is not Button { Tag: GameVariant variant }) return;
+        var activeSession = session;
+        if (activeSession is null) return;
+
+        await activeSession.SelectGameAsync(variant, CancellationToken.None);
+    }
+
+    private void OnGameSelectorPopupOpened(object? sender, EventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is { } topLevel)
+        {
+            topLevel.PointerPressed += OnGameSelectorOutsidePointerPressed;
+        }
+    }
+
+    private void OnGameSelectorPopupClosed(object? sender, EventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is { } topLevel)
+        {
+            topLevel.PointerPressed -= OnGameSelectorOutsidePointerPressed;
+        }
+    }
+
+    private void OnGameSelectorOutsidePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (GameSelectorPopup is not { IsOpen: true, Child: { } child } popup) return;
+        if (e.Source is not Visual source) return;
+
+        var current = source;
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, child) || ReferenceEquals(current, popup)) return;
+            current = current.Parent as Visual;
+        }
+
+        CloseGameSelector();
+    }
+
+    private void CloseGameSelector()
+    {
+        if (GameSelectorPopup is { IsOpen: true } popup)
+        {
+            popup.IsOpen = false;
         }
     }
 

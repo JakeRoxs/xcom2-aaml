@@ -35,13 +35,20 @@
       <Setter Property="Margin" Value="2" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
-    <Style Selector="Image.shell-game-icon">
-      <Setter Property="Width" Value="48" />
-      <Setter Property="Height" Value="48" />
-      <Setter Property="Margin" Value="8,8,8,4" />
-      <Setter Property="Opacity" Value="0.9" />
+    <Style Selector="Border.shell-rail Grid.shell-game-item">
+      <Setter Property="Margin" Value="10,2" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Border.shell-rail.compact Grid.shell-game-item">
+      <Setter Property="Margin" Value="2" />
       <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Image.shell-game-icon">
+      <Setter Property="Width" Value="{DynamicResource AamlShellIconSize}" />
+      <Setter Property="Height" Value="{DynamicResource AamlShellIconSize}" />
       <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="Opacity" Value="0.9" />
       <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
       <Setter Property="RenderTransform" Value="scale(1)" />
       <Setter Property="Transitions">
@@ -51,21 +58,109 @@
         </Transitions>
       </Setter>
     </Style>
-    <Style Selector="Image.shell-game-icon:pointerover">
+    <Style Selector="Button.shell-game-icon-button">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.shell-game-icon-button:pointerover Image.shell-game-icon">
       <Setter Property="Opacity" Value="1" />
       <Setter Property="RenderTransform" Value="scale(1.06)" />
+    </Style>
+    <Style Selector="Border.shell-game-challenge-badge">
+      <Setter Property="Background" Value="{DynamicResource SystemAccentColor}" />
+      <Setter Property="TextElement.Foreground" Value="White" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="-2,-2,0,0" />
+    </Style>
+    <Style Selector="Border.shell-game-challenge-badge TextBlock">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.shell-game-selector">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListBrush}" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="BoxShadow" Value="0 6 16 #66000000" />
+    </Style>
+    <Style Selector="Button.shell-game-option">
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.shell-game-option:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SystemControlHighlightListLowBrush}" />
+    </Style>
+    <Style Selector="Image.shell-game-option-icon">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
   </UserControl.Styles>
   <Grid ColumnDefinitions="Auto,*">
     <Border Classes="shell-rail"
             Classes.compact="{Binding !IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}">
       <Grid RowDefinitions="Auto,*,Auto">
-        <Image Grid.Row="0"
-               Classes="shell-game-icon"
-               Source="{Binding ActiveGameIcon, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
-               ToolTip.Tip="{Binding ActiveGameIconTooltip, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
-               AutomationProperties.AutomationId="ShellActiveGameIcon"
-               AutomationProperties.Name="{Binding ActiveGameIconTooltip, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}" />
+        <Grid Grid.Row="0"
+              Classes="shell-game-item"
+              ColumnDefinitions="Auto,*">
+          <Button x:Name="GameIconButton"
+                  Grid.Column="0"
+                  Classes="shell-game-icon-button"
+                  AutomationProperties.AutomationId="ShellActiveGameIcon"
+                  AutomationProperties.Name="{Binding ActiveGameIconTooltip, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+                  ToolTip.Tip="{Binding ActiveGameIconTooltip, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+                  Click="OnGameIconButtonClicked">
+            <Grid>
+              <Image Classes="shell-game-icon"
+                     Source="{Binding ActiveGameIcon, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}" />
+              <Border Classes="shell-game-challenge-badge"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Top"
+                      IsVisible="{Binding IsChallengeMode, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}">
+                <TextBlock Classes="badge" Text="Challenge" />
+              </Border>
+            </Grid>
+          </Button>
+          <TextBlock Grid.Column="1"
+                     Classes="shell-game-name"
+                     Margin="10,0,0,0"
+                     IsVisible="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"
+                     Text="{Binding ActiveGameDisplayName, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}" />
+          <Popup x:Name="GameSelectorPopup"
+                 PlacementTarget="{Binding ElementName=GameIconButton}"
+                 Placement="Right"
+                 Opened="OnGameSelectorPopupOpened"
+                 Closed="OnGameSelectorPopupClosed">
+            <Border Classes="shell-game-selector" Padding="6">
+              <ItemsControl ItemsSource="{Binding GameOptions, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="local:GameOption">
+                    <Button Classes="shell-game-option"
+                            Tag="{Binding Variant}"
+                            Click="OnGameOptionClicked">
+                      <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Image Classes="shell-game-option-icon" Source="{Binding Icon}" />
+                        <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+          </Popup>
+        </Grid>
         <zac:SectionStrip Grid.Row="1"
                           Orientation="Vertical"
                           ItemTemplate="{StaticResource ShellRailItemTemplate}"

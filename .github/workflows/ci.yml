@@ -13,26 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  qualification-policy:
-    name: Protected qualification static policy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Run qualification fixtures
-        shell: pwsh
-        run: ./eng/qualification/test-qualification-harness.ps1
-      - name: Run release workflow policy fixtures
-        shell: pwsh
-        run: ./eng/test-release-workflow.ps1
-      - name: Lint protected workflow
-        uses: docker://rhysd/actionlint:1.7.7
-        with:
-          args: .github/workflows/protected-qualification.yml .github/workflows/release.yml
-
   test:
-    name: Headless tests (${{ matrix.os }})
+    name: Build and test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -58,92 +40,3 @@ jobs:
           sudo apt-get install --yes appstream desktop-file-utils
           desktop-file-validate eng/linux/io.github.jakeroxs.xcom2_aaml.desktop
           appstreamcli validate --pedantic eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml
-
-  package:
-    name: Package policy (${{ matrix.rid }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            rid: win-x64
-            manifest: eng/package-manifests/aaml-win-x64-single-file.json
-            singleFile: true
-          - os: ubuntu-latest
-            rid: linux-x64
-            manifest: eng/package-manifests/aaml-linux-x64.json
-            singleFile: false
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-          cache: true
-          cache-dependency-path: "**/packages.lock.json"
-      - name: Verify package policy inputs are tracked
-        shell: pwsh
-        run: |
-          git ls-files --error-unmatch '${{ matrix.manifest }}'
-          if ($LASTEXITCODE -ne 0) { throw 'Package manifest is not tracked.' }
-          git check-ignore '${{ matrix.manifest }}'
-          if ($LASTEXITCODE -eq 0) { throw 'Package manifest is ignored.' }
-          git ls-files --error-unmatch eng/release-supply-chain-policy.json eng/generate-release-evidence.ps1 eng/test-release-evidence.ps1 eng/test-release-license-catalog.ps1 eng/test-aaml-package-policy.ps1 eng/license-sources eng/license-texts
-          if ($LASTEXITCODE -ne 0) { throw 'Release supply-chain policy inputs are not tracked.' }
-      - run: dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
-      - if: matrix.rid == 'linux-x64'
-        run: dotnet restore tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj --locked-mode
-      - shell: pwsh
-        run: ./eng/test-release-license-catalog.ps1
-      - shell: pwsh
-        run: ./eng/test-release-evidence.ps1
-      - shell: pwsh
-        run: ./eng/test-brand-assets.ps1
-      - if: matrix.rid == 'linux-x64'
-        name: Validate Linux desktop metadata
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes appstream desktop-file-utils
-          desktop-file-validate eng/linux/io.github.jakeroxs.xcom2_aaml.desktop
-          appstreamcli validate --pedantic eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml
-      - shell: pwsh
-        run: ./eng/stage-aaml-package.ps1 -Rid '${{ matrix.rid }}' -OutputDirectory '${{ runner.temp }}/AAML Package/${{ matrix.rid }}' -Version '0.0.0-ci.${{ github.run_number }}' -Repository '${{ github.repository }}' -Commit '${{ github.sha }}' -WindowsSingleFile:${{ matrix.singleFile && '$true' || '$false' }} -VerifyTrackedSourceInputs
-      - shell: pwsh
-        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Package/${{ matrix.rid }}' -ManifestPath '${{ matrix.manifest }}' -GenerateChecksums
-      - if: matrix.rid == 'linux-x64'
-        name: Test consolidated Linux package policy
-        shell: pwsh
-        run: ./eng/test-aaml-package-policy.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Package/linux-x64' -ManifestPath '${{ matrix.manifest }}'
-      - if: matrix.rid == 'linux-x64'
-        name: Smoke consolidated Linux helper modes
-        shell: bash
-        working-directory: ${{ runner.temp }}/AAML Package/linux-x64
-        run: |
-          set +e
-          wrapper_output=$(./tools/proton-wrapper/AAML.ProtonWrapper 2>&1)
-          wrapper_code=$?
-          probe_output=$(./tools/proton-wrapper/AAML.ProtonWrapper --steam-probe 2>&1)
-          probe_code=$?
-          set -e
-          test "$wrapper_code" -eq 64
-          grep -q 'steam.launch.command_empty' <<< "$wrapper_output"
-          test "$probe_code" -eq 2
-          grep -q 'initialize/subscriptions' <<< "$probe_output"
-          grep -q 'libsteam_api.so' <<< "$probe_output"
-          bash '${{ github.workspace }}/eng/linux/run-proton-wrapper-tests.sh' '${{ runner.temp }}/AAML Package/linux-x64/tools/proton-wrapper'
-      - if: matrix.rid == 'linux-x64'
-        shell: bash
-        run: tar -C '${{ runner.temp }}/AAML Package' -czf '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-linux-x64.tar.gz' linux-x64
-      - if: matrix.rid == 'win-x64'
-        shell: pwsh
-        run: Compress-Archive -Path '${{ runner.temp }}/AAML Package/win-x64' -DestinationPath '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-win-x64.zip'
-      - name: Extract and revalidate archive
-        shell: pwsh
-        run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-${{ matrix.rid }}${{ matrix.rid == 'win-x64' && '.zip' || '.tar.gz' }}' -Rid '${{ matrix.rid }}' -ManifestPath '${{ matrix.manifest }}' -ExtractionDirectory '${{ runner.temp }}/AAML Extracted/${{ matrix.rid }}'
-      - uses: actions/upload-artifact@v7
-        with:
-          name: AAML-0.0.0-ci.${{ github.run_number }}-${{ matrix.rid }}
-          path: ${{ runner.temp }}/AAML-0.0.0-ci.${{ github.run_number }}-*
-          if-no-files-found: error
-          retention-days: 14

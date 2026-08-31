@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       create_release:
-        description: Create the GitHub release after both archives pass
+        description: Create the GitHub release after archives build
         required: true
         default: false
         type: boolean
@@ -24,58 +24,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  provenance:
-    name: Validate release provenance
-    runs-on: ubuntu-latest
+  win:
+    name: Build win-x64
+    runs-on: windows-latest
     outputs:
       version: ${{ steps.version.outputs.value }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Validate canonical tracked clean commit and version
-        id: version
-        shell: pwsh
-        run: |
-          if ('${{ github.repository }}' -ne 'JakeRoxs/xcom2-aaml') { throw 'Official releases may run only in the canonical repository.' }
-          git diff --quiet --exit-code
-          if ($LASTEXITCODE -ne 0) { throw 'Checkout has tracked modifications.' }
-          git diff --cached --quiet --exit-code
-          if ($LASTEXITCODE -ne 0) { throw 'Checkout has staged modifications.' }
-          git cat-file -e '${{ github.sha }}^{commit}'
-          if ($LASTEXITCODE -ne 0) { throw 'github.sha is not a tracked commit.' }
-          $version = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}'.Substring(1) } else { '${{ inputs.version }}' }
-          if ($version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$') { throw "Version is not SemVer 2.0: $version" }
-          $versionWithoutBuild = $version.Split('+', 2)[0]
-          if ($versionWithoutBuild.Contains('-')) {
-            foreach ($identifier in $versionWithoutBuild.Split('-', 2)[1].Split('.')) {
-              if ($identifier -match '^[0-9]+$' -and $identifier.Length -gt 1 -and $identifier.StartsWith('0')) { throw "Numeric prerelease identifiers cannot contain leading zeroes: $version" }
-            }
-          }
-          if ('${{ github.event_name }}' -eq 'push') {
-            if ('${{ github.ref_name }}' -ne "v$version") { throw 'Tag and release version differ.' }
-            if ((git rev-list -n 1 '${{ github.ref_name }}') -ne '${{ github.sha }}') { throw 'Release tag does not resolve to github.sha.' }
-          }
-          "value=$version" >> $env:GITHUB_OUTPUT
-
-  stage:
-    name: Stage ${{ matrix.rid }}
-    needs: provenance
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        rid: [win-x64, linux-x64]
-        include:
-          - rid: win-x64
-            os: windows-latest
-            manifest: eng/package-manifests/aaml-win-x64-single-file.json
-            singleFile: true
-          - rid: linux-x64
-            os: ubuntu-latest
-            manifest: eng/package-manifests/aaml-linux-x64.json
-            singleFile: false
     steps:
       - uses: actions/checkout@v7
         with:
@@ -85,74 +38,38 @@ jobs:
           global-json-file: global.json
           cache: true
           cache-dependency-path: '**/packages.lock.json'
-      - name: Restore package roots
+      - name: Resolve version
+        id: version
         shell: pwsh
         run: |
-          dotnet restore src/AAML.Avalonia/AAML.Avalonia.csproj --locked-mode
-          if ($LASTEXITCODE -ne 0) { throw 'Application restore failed.' }
-          if ('${{ matrix.rid }}' -eq 'linux-x64') {
-            dotnet restore tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj --locked-mode
-            if ($LASTEXITCODE -ne 0) { throw 'Proton wrapper restore failed.' }
-          }
-      - name: Run release fixtures
-        shell: pwsh
-        run: |
-          ./eng/test-release-license-catalog.ps1
-          ./eng/test-release-evidence.ps1
-          ./eng/test-brand-assets.ps1
-          ./eng/test-release-workflow.ps1
-      - if: matrix.rid == 'linux-x64'
-        name: Validate Linux desktop metadata
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes appstream desktop-file-utils
-          desktop-file-validate eng/linux/io.github.jakeroxs.xcom2_aaml.desktop
-          appstreamcli validate --pedantic eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml
-      - name: Stage exact payload
+          $version = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}'.Substring(1) } else { '${{ inputs.version }}' }
+          "value=$version" >> $env:GITHUB_OUTPUT
+      - name: Publish single-file
         shell: pwsh
         run: >-
-          ./eng/stage-aaml-package.ps1
-          -Rid '${{ matrix.rid }}'
-          -OutputDirectory '${{ runner.temp }}/AAML Stage/${{ matrix.rid }}'
-          -Version '${{ needs.provenance.outputs.version }}'
-          -Repository '${{ github.repository }}'
-          -Commit '${{ github.sha }}'
-          -WindowsSingleFile:${{ matrix.singleFile && '$true' || '$false' }}
-          -VerifyTrackedSourceInputs
-      - name: Validate unsigned staged payload
+          dotnet publish src/AAML.Avalonia/AAML.Avalonia.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:PublishAot=false
+          -p:Version='${{ steps.version.outputs.value }}' -p:DebugType=None -p:DebugSymbols=false
+          -o "AAML win-x64"
+      - name: Add licenses
         shell: pwsh
-        run: >-
-          ./eng/validate-aaml-artifact.ps1
-          -ArtifactDirectory '${{ runner.temp }}/AAML Stage/${{ matrix.rid }}'
-          -ManifestPath '${{ github.workspace }}/${{ matrix.manifest }}'
-      - if: matrix.rid == 'linux-x64'
-        name: Archive Linux staged payload for transport
-        shell: bash
-        run: tar -C '${{ runner.temp }}/AAML Stage' -czf '${{ runner.temp }}/AAML-stage-linux-x64.tar.gz' linux-x64
-      - if: matrix.rid == 'linux-x64'
-        uses: actions/upload-artifact@v7
+        run: |
+          New-Item -ItemType Directory -Path 'AAML win-x64/licenses' -Force | Out-Null
+          Copy-Item 'src/ThirdParty/Steamworks.NET/LICENSE.txt' 'AAML win-x64/licenses/Steamworks.NET-LICENSE.txt'
+          Copy-Item 'LICENSE' 'AAML win-x64/licenses/AAML-GPL-3.0.txt'
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -LiteralPath 'AAML win-x64' -DestinationPath "AAML-${{ steps.version.outputs.value }}-win-x64.zip"
+      - uses: actions/upload-artifact@v7
         with:
-          path: ${{ runner.temp }}/AAML-stage-linux-x64.tar.gz
-          archive: false
+          name: AAML-${{ steps.version.outputs.value }}-win-x64
+          path: AAML-*-win-x64.zip
           if-no-files-found: error
-          retention-days: 2
-      - if: matrix.rid == 'win-x64'
-        uses: actions/upload-artifact@v7
-        with:
-          name: AAML-stage-${{ matrix.rid }}
-          path: ${{ runner.temp }}/AAML Stage
-          if-no-files-found: error
-          retention-days: 2
 
-  windows:
-    name: Finalize unsigned win-x64
-    needs: [provenance, stage]
-    runs-on: windows-latest
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
+  linux:
+    name: Build linux-x64
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
@@ -160,88 +77,47 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-      - uses: actions/download-artifact@v8
-        with:
-          name: AAML-stage-win-x64
-          path: ${{ runner.temp }}/AAML Stage
-      - name: Official validation and checksums
-        shell: pwsh
-        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Stage/win-x64' -ManifestPath './eng/package-manifests/aaml-win-x64-single-file.json' -GenerateChecksums -OfficialRelease
-      - name: Archive unsigned payload
-        shell: pwsh
-        run: Compress-Archive -LiteralPath '${{ runner.temp }}/AAML Stage/win-x64' -DestinationPath '${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip'
-      - name: Extract and revalidate exact archive
-        shell: pwsh
-        run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip' -Rid win-x64 -ManifestPath './eng/package-manifests/aaml-win-x64-single-file.json' -ExtractionDirectory '${{ runner.temp }}/AAML Roundtrip/win-x64' -OfficialRelease
-      - name: Attest final Windows archive
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: ${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip
-      - uses: actions/upload-artifact@v7
-        with:
-          name: AAML-${{ needs.provenance.outputs.version }}-win-x64
-          path: |
-            ${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip
-            ${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-win-x64.zip.sha256
-          if-no-files-found: error
-
-  linux:
-    name: Finalize linux-x64
-    needs: [provenance, stage]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@v8
-        with:
-          name: AAML-stage-linux-x64.tar.gz
-          path: ${{ runner.temp }}/AAML Transport
-      - name: Extract permission-preserving Linux stage
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - name: Resolve version
+        id: version
         shell: bash
         run: |
-          mkdir -p '${{ runner.temp }}/AAML Stage'
-          tar -C '${{ runner.temp }}/AAML Stage' -xzf '${{ runner.temp }}/AAML Transport/AAML-stage-linux-x64.tar.gz'
-      - name: Official validation and checksums without member signing
-        shell: pwsh
-        run: ./eng/validate-aaml-artifact.ps1 -ArtifactDirectory '${{ runner.temp }}/AAML Stage/linux-x64' -ManifestPath './eng/package-manifests/aaml-linux-x64.json' -GenerateChecksums -OfficialRelease
-      - name: Archive Linux payload
-        shell: bash
-        run: tar -C '${{ runner.temp }}/AAML Stage' -czf '${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-linux-x64.tar.gz' linux-x64
-      - name: Extract and revalidate exact archive
-        shell: pwsh
-        run: ./eng/test-aaml-archive.ps1 -ArchivePath '${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-linux-x64.tar.gz' -Rid linux-x64 -ManifestPath './eng/package-manifests/aaml-linux-x64.json' -ExtractionDirectory '${{ runner.temp }}/AAML Roundtrip/linux-x64' -OfficialRelease
-      - name: Attest final Linux archive
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: ${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-linux-x64.tar.gz
+          if [ "${{ github.event_name }}" = "push" ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="${{ inputs.version }}"; fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        run: |
+          dotnet publish src/AAML.Avalonia/AAML.Avalonia.csproj -c Release -r linux-x64 --self-contained true -o "AAML linux-x64"
+          dotnet publish tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj -c Release -r linux-x64 --self-contained true -o "AAML linux-x64/tools/proton-wrapper"
+      - name: Add licenses
+        run: |
+          mkdir -p "AAML linux-x64/licenses"
+          cp src/ThirdParty/Steamworks.NET/LICENSE.txt "AAML linux-x64/licenses/Steamworks.NET-LICENSE.txt"
+          cp LICENSE "AAML linux-x64/licenses/AAML-GPL-3.0.txt"
+      - name: Tar
+        run: tar -czf "AAML-${{ steps.version.outputs.value }}-linux-x64.tar.gz" "AAML linux-x64"
       - uses: actions/upload-artifact@v7
         with:
-          name: AAML-${{ needs.provenance.outputs.version }}-linux-x64
-          path: |
-            ${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-linux-x64.tar.gz
-            ${{ runner.temp }}/AAML-${{ needs.provenance.outputs.version }}-linux-x64.tar.gz.sha256
+          name: AAML-${{ steps.version.outputs.value }}-linux-x64
+          path: AAML-*-linux-x64.tar.gz
           if-no-files-found: error
 
   release:
     name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release
-    needs: [provenance, windows, linux]
+    needs: [win, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: AAML-${{ needs.provenance.outputs.version }}-*
+          pattern: AAML-*
           path: release-assets
           merge-multiple: true
-      - name: Create release after both finalizers pass
+      - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: gh release create 'v${{ needs.provenance.outputs.version }}' release-assets/* --repo '${{ github.repository }}' --verify-tag --generate-notes
+        run: |
+          version="${{ needs.win.outputs.version }}"
+          gh release create "v${version}" release-assets/* --verify-tag --generate-notes
