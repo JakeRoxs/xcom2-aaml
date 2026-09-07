@@ -111,7 +111,7 @@ try {
 
     $desktop = (Get-Content -LiteralPath (Join-Path $root 'eng/linux/io.github.jakeroxs.xcom2_aaml.desktop') -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
     [xml]$appstream = (Get-Content -LiteralPath (Join-Path $root 'eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml') -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
-    if ($desktop -notmatch '(?m)^Icon=io\.github\.jakeroxs\.xcom2_aaml$' -or $desktop -notmatch '(?m)^Exec=AAML\.Avalonia$') {
+    if ($desktop -notmatch '(?m)^Icon=io\.github\.jakeroxs\.xcom2_aaml$' -or $desktop -notmatch '(?m)^Exec=AAML$') {
         Write-Host "Desktop content: $desktop"
         throw 'Linux desktop icon or executable reference is invalid.'
     }
