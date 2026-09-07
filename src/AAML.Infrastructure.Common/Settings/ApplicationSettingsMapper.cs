@@ -43,7 +43,8 @@ internal static class ApplicationSettingsMapper
             RequireDefined(settings.NavigationRailMode).ToString(),
             settings.AutoSaveChanges,
             RequireTextScale(settings.TextScale),
-            RequireIconScale(settings.IconScale));
+            RequireIconScale(settings.IconScale),
+            RequireDefined(settings.Runtime).ToString());
     }
 
     public static ApplicationSettings FromCurrentDocument(CurrentSettingsDocument document)
@@ -75,7 +76,8 @@ internal static class ApplicationSettingsMapper
             document.DuplicatePreferences, ParseGrid(document.ModGrid), document.RetainedWorkshopItems,
             document.CheckForUpdates, ParseNamed<UpdateChannelPreference>(document.UpdateChannel, "updateChannel"),
             ParseNamed<NavigationRailMode>(document.NavigationRailMode, "navigationRailMode"), document.AutoSaveChanges,
-            RequireTextScale(document.TextScale), RequireIconScale(document.IconScale));
+            RequireTextScale(document.TextScale), RequireIconScale(document.IconScale),
+            ParseNamed<GameRuntime>(document.Runtime, "runtime"));
     }
 
     public static ApplicationSettings FromMigratedDocument(SettingsMigrationState state)
@@ -95,7 +97,8 @@ internal static class ApplicationSettingsMapper
             state.DuplicatePreferences ?? [], ParseGrid(state.ModGrid), state.RetainedWorkshopItems ?? [],
             state.CheckForUpdates ?? true, ParseOptionalNamed(state.UpdateChannel, UpdateChannelPreference.Stable, "updateChannel"),
             ParseOptionalNamed(state.NavigationRailMode, NavigationRailMode.Expanded, "navigationRailMode"), state.AutoSaveChanges,
-            state.TextScale, state.IconScale);
+            state.TextScale, state.IconScale,
+            ParseOptionalNamed(state.Runtime, GameRuntime.Auto, "runtime"));
     }
 
     private static ApplicationSettings Create(
@@ -105,7 +108,8 @@ internal static class ApplicationSettingsMapper
         WorkshopStartupRefreshPolicy workshop, ThemePreference theme, bool allowMultiple,
         IReadOnlyList<DuplicatePreferenceDocument> duplicates, ModGridPreferences grid,
         IReadOnlyList<RetainedWorkshopDocument> retained, bool checkForUpdates, UpdateChannelPreference updateChannel,
-         NavigationRailMode navigationRailMode, bool autoSaveChanges, decimal textScale, decimal iconScale) => new(
+        NavigationRailMode navigationRailMode, bool autoSaveChanges, decimal textScale, decimal iconScale,
+        GameRuntime runtime) => new(
             ApplicationSettingsDefaults.CurrentSchemaVersion,
             game,
             gameLocation,
@@ -133,7 +137,8 @@ internal static class ApplicationSettingsMapper
             navigationRailMode,
             autoSaveChanges,
             RequireTextScale(textScale),
-            RequireIconScale(iconScale));
+            RequireIconScale(iconScale),
+            runtime);
 
     private static decimal RequireTextScale(decimal value) => ApplicationSettingsDefaults.IsTextScaleSupported(value)
         ? value

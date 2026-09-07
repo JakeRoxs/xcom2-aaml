@@ -46,21 +46,29 @@ jobs:
           "value=$version" >> $env:GITHUB_OUTPUT
       - name: Publish single-file
         shell: pwsh
-        run: >-
+        run: |
           dotnet publish src/AAML.Avalonia/AAML.Avalonia.csproj -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true
-          -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:PublishAot=false
-          -p:Version='${{ steps.version.outputs.value }}' -p:DebugType=None -p:DebugSymbols=false
-          -o "AAML win-x64"
-      - name: Add licenses
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+            -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:PublishAot=false
+            -p:Version='${{ steps.version.outputs.value }}'
+            -o "publish/win-x64-singlefile"
+          .\eng\clean-singlefile-publish.ps1 -PublishDir "publish/win-x64-singlefile"
+      - name: Stage release artifact
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path 'AAML win-x64/licenses' -Force | Out-Null
-          Copy-Item 'src/ThirdParty/Steamworks.NET/LICENSE.txt' 'AAML win-x64/licenses/Steamworks.NET-LICENSE.txt'
-          Copy-Item 'LICENSE' 'AAML win-x64/licenses/AAML-GPL-3.0.txt'
-      - name: Zip
+          $version = '${{ steps.version.outputs.value }}'
+          New-Item -ItemType Directory -Path "publish/win-x64-singlefile" -Force | Out-Null
+          @{ rid='win-x64'; selfContained=$true; singleFile=$true; publishedAt=(Get-Date -Format 'o'); sourceBranch='main'; publishProfile='win-x64-singlefile' }
+            | ConvertTo-Json | Set-Content -LiteralPath "publish/win-x64-singlefile/release-metadata.json" -Encoding utf8
+          Get-ChildItem -LiteralPath 'publish/win-x64-singlefile' -File
+            | Where-Object Name -ne 'SHA256SUMS'
+            | ForEach-Object {
+                $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                "{0}  {1}" -f $hash, $_.Name
+              } | Set-Content -LiteralPath "publish/win-x64-singlefile/SHA256SUMS" -Encoding utf8
+      - name: Zip release
         shell: pwsh
-        run: Compress-Archive -LiteralPath 'AAML win-x64' -DestinationPath "AAML-${{ steps.version.outputs.value }}-win-x64.zip"
+        run: Compress-Archive -LiteralPath 'publish/win-x64-singlefile' -DestinationPath "AAML-${{ steps.version.outputs.value }}-win-x64.zip"
       - uses: actions/upload-artifact@v7
         with:
           name: AAML-${{ steps.version.outputs.value }}-win-x64
@@ -89,17 +97,24 @@ jobs:
         run: |
           dotnet publish src/AAML.Avalonia/AAML.Avalonia.csproj -c Release -r linux-x64 --self-contained true -o "AAML linux-x64"
           dotnet publish tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj -c Release -r linux-x64 --self-contained true -o "AAML linux-x64/tools/proton-wrapper"
-      - name: Add licenses
+      - name: Stage Linux package
+        run: bash eng/linux/stage-linux-package.sh "AAML linux-x64"
+      - name: Build AppImage
         run: |
-          mkdir -p "AAML linux-x64/licenses"
-          cp src/ThirdParty/Steamworks.NET/LICENSE.txt "AAML linux-x64/licenses/Steamworks.NET-LICENSE.txt"
-          cp LICENSE "AAML linux-x64/licenses/AAML-GPL-3.0.txt"
+          bash eng/linux/build-appdir.sh "AAML linux-x64" AAML.AppDir
+          bash eng/linux/package-appimage.sh AAML.AppDir "AAML-${{ steps.version.outputs.value }}-linux-x86_64.AppImage"
+          mkdir appimage-extracted
+          (cd appimage-extracted && ../AAML-${{ steps.version.outputs.value }}-linux-x86_64.AppImage --appimage-extract >/dev/null)
+          bash eng/linux/validate-appdir.sh appimage-extracted/squashfs-root
       - name: Tar
         run: tar -czf "AAML-${{ steps.version.outputs.value }}-linux-x64.tar.gz" "AAML linux-x64"
       - uses: actions/upload-artifact@v7
         with:
           name: AAML-${{ steps.version.outputs.value }}-linux-x64
-          path: AAML-*-linux-x64.tar.gz
+          path: |
+            AAML-*-linux-x64.tar.gz
+            AAML-*-linux-x86_64.AppImage
+            AAML-*-linux-x86_64.AppImage.sha256
           if-no-files-found: error
 
   release:

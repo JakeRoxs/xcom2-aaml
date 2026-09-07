@@ -39,7 +39,7 @@ public sealed class SupportViewModel : ReactiveObject, IDisposable
         OpenGameLog = ReactiveCommand.CreateFromTask(() => session.Settings is null || gameLogs.GetCurrentLogPath(session.Settings.SelectedGame) is not { } path ? Task.FromResult(Result.Failure("The selected platform does not expose a qualified game-log path.")) : ToCommand(launcher.OpenFileAsync(path, CancellationToken.None))).Enhance(text: "Open game log", name: "OpenGameLog");
     }
 
-    public string Product => "Avalonia Alternative Mod Launcher";
+    public string Product => "AAML";
     public string Version { get; }
     public string Runtime => RuntimeInformation.FrameworkDescription;
     public string Platform => $"{RuntimeInformation.OSDescription} ({RuntimeInformation.ProcessArchitecture})";

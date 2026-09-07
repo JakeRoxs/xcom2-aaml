@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$ArtifactDirectory,
     [Parameter(Mandatory = $true)][string]$EvidenceDirectory,
-    [string]$ExpectedTitle = 'Avalonia Alternative Mod Launcher',
+    [string]$ExpectedTitle = 'AAML',
     [ValidateRange(5, 120)][int]$StartupTimeoutSeconds = 30,
     [ValidateRange(1, 30)][int]$StepTimeoutSeconds = 10
 )
@@ -404,7 +404,7 @@ try {
         $clipboardResult = 'unavailable'
         try {
             $clipboard = Get-Clipboard -Raw -ErrorAction Stop
-            if ($clipboard -and $clipboard.Contains('Avalonia Alternative Mod Launcher', [StringComparison]::Ordinal)) { $clipboardResult = 'verified' }
+            if ($clipboard -and $clipboard.Contains('AAML', [StringComparison]::Ordinal)) { $clipboardResult = 'verified' }
         }
         catch { $clipboardResult = 'unavailable' }
         [ordered]@{ page = $page.Current.AutomationId; updateStatus = Get-ElementText $updateStatus; updateCommandInvoked = $false; clipboard = $clipboardResult }
@@ -450,6 +450,9 @@ try {
             throw "Application data escaped the new root: $($file.FullName)"
         }
     }
+    # Remove runtime artifacts written by SteamClientLifetime before checking artifact hashes.
+    $runtimeArtifact = Join-Path $artifact 'steam_appid.txt'
+    if (Test-Path -LiteralPath $runtimeArtifact -PathType Leaf) { Remove-Item -LiteralPath $runtimeArtifact -Force }
     $artifactHashesAfter = Get-TreeHashes $artifact
     Assert-TreeEqual $artifactHashesBefore $artifactHashesAfter 'Staged artifact'
     $oldRootAfter = if (Test-Path -LiteralPath $oldRoot) { Get-TreeHashes $oldRoot } else { [ordered]@{} }

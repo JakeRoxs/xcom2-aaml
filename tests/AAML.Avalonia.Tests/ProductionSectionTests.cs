@@ -219,7 +219,7 @@ public sealed class ProductionSectionTests
         await Execute(viewModel.OpenIssues);
         await Execute(viewModel.OpenWiki);
 
-        viewModel.Product.Should().Be("Avalonia Alternative Mod Launcher");
+        viewModel.Product.Should().Be("AAML");
         viewModel.Version.Should().Be("1.2.3");
         opened.Should().Equal(ProjectIdentity.RepositoryUri, ProjectIdentity.IssuesUri, ProjectIdentity.WikiUri);
         opened.Should().OnlyContain(uri => uri.Host == "github.com" && uri.AbsolutePath.StartsWith("/JakeRoxs/xcom2-aaml", StringComparison.Ordinal));

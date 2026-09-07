@@ -3,6 +3,7 @@ using System.Text;
 using AAML.Application.Common;
 using AAML.Application.Configurations;
 using AAML.Domain.Games;
+using AAML.Domain.Launching;
 
 namespace AAML.Infrastructure.Linux.Launching;
 
@@ -25,18 +26,21 @@ public sealed class LinuxLegacyGameConfigurationSource : ILegacyGameConfiguratio
             return Result<ExistingModRootPreview>.Failure(new Error("mod_roots.variant_unsupported", "Linux Proton ModRootDirs migration supports XCOM 2 Vanilla and War of the Chosen only; Chimera Squad is not supported.", ErrorKind.Validation));
         if (string.IsNullOrWhiteSpace(installationLocation))
             return Result<ExistingModRootPreview>.Failure(new Error("mod_roots.installation_required", "Configure the selected game installation before previewing existing roots.", ErrorKind.Validation));
-        var layout = LinuxSteamGameLayout.Resolve(installationLocation, variant);
+        var layout = LinuxGameRuntimeLayout.Resolve(installationLocation, variant, GameRuntime.Proton);
         if (!layout.IsSuccess) return Result<ExistingModRootPreview>.Failure(layout.Error!);
-        var sourcePath = Path.Combine(layout.Value!.ConfigurationDirectory, "XComEngine.ini");
+        var resolved = layout.Value!;
+        if (!resolved.UsesProtonPrefix)
+            return Result<ExistingModRootPreview>.Failure(new Error("mod_roots.runtime_mismatch", "Legacy mod roots only apply to Proton layouts.", ErrorKind.Validation));
+        var sourcePath = Path.Combine(resolved.ConfigurationDirectory, "XComEngine.ini");
         try
         {
             var contents = File.Exists(sourcePath) ? await File.ReadAllTextAsync(sourcePath, cancellationToken).ConfigureAwait(false) : string.Empty;
-            var binary = Path.GetDirectoryName(layout.Value.TargetExecutablePath)!;
+            var binary = Path.GetDirectoryName(resolved.TargetExecutablePath)!;
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var configured = configuredRoots.Select(TryFullPath).Where(path => path is not null).Cast<string>().ToHashSet(StringComparer.Ordinal);
-            var rows = ExistingModRootIniParser.Parse(contents, StringComparer.Ordinal).Select((item, index) => Classify(index, item.Value, item.Line, layout.Value, binary, seen, configured)).ToArray();
+            var rows = ExistingModRootIniParser.Parse(contents, StringComparer.Ordinal).Select((item, index) => Classify(index, item.Value, item.Line, resolved, binary, seen, configured)).ToArray();
             var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(contents))).ToLowerInvariant();
-            var behavior = $"Linux Steam/Proton only: generated prefix {sourcePath}; S: maps to {layout.Value.SteamAppsPath}, Z: maps to /, and relative roots resolve against {binary}. Chimera Squad is not supported.";
+            var behavior = $"Linux Steam/Proton only: generated prefix {sourcePath}; S: maps to {resolved.SteamAppsPath}, Z: maps to /, and relative roots resolve against {binary}. Chimera Squad is not supported.";
             var report = $"ModRootDirs migration preview\nVariant: {variant}\nSource: {sourcePath}\nSource preserved: yes\nSource SHA-256: {fingerprint}\nBehavior: {behavior}\n" + (rows.Length == 0 ? "No ModRootDirs entries found." : string.Join('\n', rows.Select(row => $"{row.Index + 1}. line {row.LineNumber} | {row.Resolution} | {row.RawValue} | {row.ResolvedPath ?? "-"}")));
             return Result<ExistingModRootPreview>.Success(new(variant, Path.GetFullPath(installationLocation), sourcePath, fingerprint, behavior, rows, report));
         }
@@ -48,7 +52,7 @@ public sealed class LinuxLegacyGameConfigurationSource : ILegacyGameConfiguratio
     public Task<Result<ObsoleteOverridePreview>> PreviewOverrideCleanupAsync(GameVariant variant, CancellationToken cancellationToken) => Task.FromResult(Result<ObsoleteOverridePreview>.Failure(Unsupported()));
     public Task<Result> ApplyOverrideCleanupAsync(ObsoleteOverridePreview preview, CancellationToken cancellationToken) => Task.FromResult(Result.Failure(Unsupported()));
 
-    private static ExistingModRootRow Classify(int index, string? raw, int line, LinuxSteamGameLayout layout, string binary, HashSet<string> seen, HashSet<string> configured)
+    private static ExistingModRootRow Classify(int index, string? raw, int line, LinuxGameRuntimeLayout layout, string binary, HashSet<string> seen, HashSet<string> configured)
     {
         if (string.IsNullOrWhiteSpace(raw)) return new(index, raw ?? string.Empty, null, line, ExistingModRootResolution.Malformed);
         try

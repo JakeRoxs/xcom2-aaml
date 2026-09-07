@@ -51,8 +51,8 @@ public sealed class JsonSettingsRepositoryTests
             loaded.Value.AutoSaveChanges.Should().Be(schema >= 9);
             loaded.Value.TextScale.Should().Be(schema == 10 ? 1.25m : ApplicationSettingsDefaults.DefaultTextScale);
             loaded.Value.IconScale.Should().Be(schema == 10 ? 1.40m : ApplicationSettingsDefaults.DefaultIconScale);
-            repository.LastLoadReport.Should().Be(new SettingsLoadReport(schema, schema < 10, schema < 10));
-            JObject.Parse(await File.ReadAllTextAsync(path, TestContext.CancellationToken)).Value<int>("schemaVersion").Should().Be(10);
+            repository.LastLoadReport.Should().Be(new SettingsLoadReport(schema, schema < 11, schema < 11));
+            JObject.Parse(await File.ReadAllTextAsync(path, TestContext.CancellationToken)).Value<int>("schemaVersion").Should().Be(11);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
@@ -230,7 +230,7 @@ public sealed class JsonSettingsRepositoryTests
     [TestMethod]
     public async Task UnknownFutureSchemaAndContradictoryCurrentLocations_FailClosed()
     {
-        await AssertFixtureMutationInvalidAsync(10, json => json["schemaVersion"] = 11);
+        await AssertFixtureMutationInvalidAsync(10, json => json["schemaVersion"] = 12);
         await AssertFixtureMutationInvalidAsync(10, json => json["gameLocations"]![0]!["installationLocation"] = "C:\\Contradiction");
         await AssertFixtureMutationInvalidAsync(10, json => json["modGrid"]!["includeHidden"]!.Parent!.Remove());
     }
@@ -425,7 +425,7 @@ public sealed class JsonSettingsRepositoryTests
 
             (await repository.LoadAsync(TestContext.CancellationToken)).IsSuccess.Should().BeTrue();
 
-            repository.LastLoadReport.Should().Be(new SettingsLoadReport(10, false, false));
+            repository.LastLoadReport.Should().Be(new SettingsLoadReport(11, false, false));
             (await File.ReadAllBytesAsync(path, TestContext.CancellationToken)).Should().Equal(canonical);
             (await File.ReadAllBytesAsync(path + ".bak", TestContext.CancellationToken)).Should().Equal(backup);
             Directory.EnumerateFiles(paths.ConfigurationDirectory, "*.tmp").Should().BeEmpty();
@@ -447,7 +447,7 @@ public sealed class JsonSettingsRepositoryTests
             var loaded = await repository.LoadAsync(TestContext.CancellationToken);
 
             loaded.IsSuccess.Should().BeTrue();
-            loaded.Value!.SchemaVersion.Should().Be(10);
+            loaded.Value!.SchemaVersion.Should().Be(11);
             repository.LastLoadReport!.CanonicalRewriteAttempted.Should().BeTrue();
             repository.LastLoadReport.CanonicalRewriteSucceeded.Should().BeFalse();
             repository.LastLoadReport.RewriteError!.Code.Should().Be("settings.write_failed");

@@ -29,9 +29,21 @@ internal static class Program
         catch (Exception exception) { FatalErrorCoordinator.Handle(exception, "entry-point", false); return 1; }
     }
 
-    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
-        .UsePlatformDetect()
-        .WithInterFont()
-        .UseReactiveUI(_ => { })
-        .LogToTrace();
+    public static AppBuilder BuildAvaloniaApp()
+    {
+        var builder = AppBuilder.Configure<App>();
+        if (OperatingSystem.IsLinux() && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+        {
+            builder.UseWayland().UseSkia().UseHarfBuzz();
+        }
+        else
+        {
+            builder.UsePlatformDetect();
+        }
+
+        return builder
+            .WithInterFont()
+            .UseReactiveUI(_ => { })
+            .LogToTrace();
+    }
 }

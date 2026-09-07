@@ -293,7 +293,7 @@ finally {
 
 $summary = [ordered]@{
     schemaVersion = 1
-    product = 'Avalonia Alternative Mod Launcher'
+    product = 'AAML'
     artifactDirectory = $artifact
     fixturesDirectory = $FixturesDirectory
     startedAtUtc = $startedAt

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="AAML.Domain">
+      <HintPath>/home/jake/Downloads/aamltests/AAML-Fedora-Native-Tests/linux-x64/AAML.Domain.dll</HintPath>
+    </Reference>
+    <Reference Include="AAML.Application">
+      <HintPath>/home/jake/Downloads/aamltests/AAML-Fedora-Native-Tests/linux-x64/AAML.Application.dll</HintPath>
+    </Reference>
+    <Reference Include="AAML.Infrastructure.Common">
+      <HintPath>/home/jake/Downloads/aamltests/AAML-Fedora-Native-Tests/linux-x64/AAML.Infrastructure.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="AAML.Infrastructure.Linux">
+      <HintPath>/home/jake/Downloads/aamltests/AAML-Fedora-Native-Tests/linux-x64/AAML.Infrastructure.Linux.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

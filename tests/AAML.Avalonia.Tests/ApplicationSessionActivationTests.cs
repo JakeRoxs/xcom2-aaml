@@ -1034,7 +1034,7 @@ public sealed class ApplicationSessionActivationTests
                     AutoSavePreferenceSaved = enabled;
                     return Result<ApplicationSettings>.Success(current with { AutoSaveChanges = enabled });
                 });
-            Bootstrapper.Setup(service => service.SavePreferencesAsync(It.IsAny<ApplicationSettings>(), It.IsAny<IReadOnlyList<LaunchArgument>>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<WorkshopStartupRefreshPolicy>(), It.IsAny<ThemePreference>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<UpdateChannelPreference>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            Bootstrapper.Setup(service => service.SavePreferencesAsync(It.IsAny<ApplicationSettings>(), It.IsAny<IReadOnlyList<LaunchArgument>>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<WorkshopStartupRefreshPolicy>(), It.IsAny<ThemePreference>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<UpdateChannelPreference>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<GameRuntime>(), It.IsAny<CancellationToken>()))
                 .Returns((IInvocation invocation) =>
                 {
                     var request = new PreferencesSaveRequest(
@@ -1050,7 +1050,8 @@ public sealed class ApplicationSessionActivationTests
                         (UpdateChannelPreference)invocation.Arguments[9],
                         (decimal)invocation.Arguments[10],
                         (decimal)invocation.Arguments[11],
-                        (CancellationToken)invocation.Arguments[12]);
+                        (GameRuntime)invocation.Arguments[12],
+                        (CancellationToken)invocation.Arguments[13]);
                     return SavePreferencesAsync(request, preferencesSaveRelease);
                 });
             Bootstrapper.Setup(service => service.SaveModGridPreferencesAsync(It.IsAny<ApplicationSettings>(), It.IsAny<ModGridPreferences>(), It.IsAny<CancellationToken>()))
@@ -1195,6 +1196,7 @@ public sealed class ApplicationSessionActivationTests
                 UpdateChannel = request.Channel,
                 TextScale = request.TextScale,
                 IconScale = request.IconScale,
+                Runtime = request.Runtime,
             };
             PreferencesSaveCompleted.TrySetResult();
             return Result<ApplicationSettings>.Success(PreferencesSaved);
@@ -1215,6 +1217,7 @@ public sealed class ApplicationSessionActivationTests
             UpdateChannelPreference Channel,
             decimal TextScale,
             decimal IconScale,
+            GameRuntime Runtime,
             CancellationToken CancellationToken);
 
         private sealed class InlineUiDispatcher : IUiDispatcher

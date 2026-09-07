@@ -171,22 +171,24 @@
                           Sections="{Binding RootLevel.Sections}"
                           SelectedSection="{Binding RootLevel.SelectedSection.Value, Mode=TwoWay}" />
         <Panel Grid.Row="2">
-          <ToggleButton AutomationProperties.AutomationId="ShellRailCollapseButton" Classes="shell-icon"
-                        AutomationProperties.Name="Collapse navigation"
-                        Margin="8"
-                        HorizontalAlignment="Left"
-                        IsVisible="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
-                        IsChecked="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}, Mode=TwoWay}"
-                        Content="☰"
-                        ToolTip.Tip="Switch to icon-only navigation" />
-          <ToggleButton AutomationProperties.AutomationId="ShellRailExpandButton" Classes="shell-icon"
-                        AutomationProperties.Name="Expand navigation"
-                        Margin="8"
-                        HorizontalAlignment="Center"
-                        IsVisible="{Binding !IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
-                        IsChecked="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}, Mode=TwoWay}"
-                        Content="☰"
-                        ToolTip.Tip="Show navigation labels" />
+          <StackPanel HorizontalAlignment="Center" Spacing="6">
+            <ToggleButton AutomationProperties.AutomationId="ShellRailCollapseButton"
+                          Classes="shell-icon"
+                          AutomationProperties.Name="Collapse navigation"
+                          HorizontalAlignment="Center"
+                          IsVisible="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+                          IsChecked="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}, Mode=TwoWay}"
+                          Content="☰"
+                          ToolTip.Tip="Switch to icon-only navigation" />
+            <ToggleButton AutomationProperties.AutomationId="ShellRailExpandButton"
+                          Classes="shell-icon"
+                          AutomationProperties.Name="Expand navigation"
+                          HorizontalAlignment="Center"
+                          IsVisible="{Binding !IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}}"
+                          IsChecked="{Binding IsRailOpen, RelativeSource={RelativeSource AncestorType=local:AamlShellView}, Mode=TwoWay}"
+                          Content="☰"
+                          ToolTip.Tip="Show navigation labels" />
+          </StackPanel>
         </Panel>
       </Grid>
     </Border>

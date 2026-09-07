@@ -41,6 +41,9 @@ dlldata.c
 # DNX
 project.lock.json
 artifacts/
+eng/linux/flatpak/payload/
+eng/linux/flatpak/.flatpak-builder/
+/.flatpak-builder/
 
 *_i.c
 *_p.c
@@ -139,6 +142,13 @@ publish/
 #*.pubxml
 
 *.publishproj
+
+# Smoke test evidence
+evidence/
+
+# Single-file release metadata (regenerated per-publish)
+publish/win-x64-singlefile/release-metadata.json
+publish/win-x64-singlefile/SHA256SUMS
 
 # NuGet Packages
 *.nupkg

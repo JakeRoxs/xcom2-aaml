@@ -115,6 +115,7 @@ public sealed class SteamWorkshopServiceTests
     }
 
     [TestMethod]
+    [DoNotParallelize]
     public async Task StartAsync_WritesSteamAppIdFileAndRestoresItOnDispose()
     {
         var api = new FakeClientApi();
@@ -134,6 +135,49 @@ public sealed class SteamWorkshopServiceTests
         }
         finally
         {
+            if (File.Exists(appIdPath)) File.Delete(appIdPath);
+        }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public async Task StartAsync_InFlatpak_UsesEnvironmentWithoutWritingSteamAppIdFile()
+    {
+        var originalFlatpakId = Environment.GetEnvironmentVariable("FLATPAK_ID");
+        var originalSteamAppId = Environment.GetEnvironmentVariable("SteamAppId");
+        var originalSteamGameId = Environment.GetEnvironmentVariable("SteamGameId");
+        var appIdPath = Path.Combine(AppContext.BaseDirectory, "steam_appid.txt");
+        if (File.Exists(appIdPath)) File.Delete(appIdPath);
+
+        try
+        {
+            Environment.SetEnvironmentVariable("FLATPAK_ID", "io.github.jakeroxs.xcom2_aaml");
+            var appIdWasAvailableDuringInitialization = false;
+            var api = new FakeClientApi
+            {
+                InitializeAction = () =>
+                {
+                    var initializationAppIdPath = Path.Combine(Environment.CurrentDirectory, "steam_appid.txt");
+                    appIdWasAvailableDuringInitialization = File.Exists(initializationAppIdPath)
+                        && File.ReadAllText(initializationAppIdPath) == "268500";
+                    return new SteamInitialization(true, string.Empty, string.Empty);
+                }
+            };
+            await using var lifetime = new SteamClientLifetime(api, new SteamOptions(TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(1), AppId: 268500));
+
+            var started = await lifetime.StartAsync(TestContext.CancellationToken);
+
+            started.IsSuccess.Should().BeTrue();
+            appIdWasAvailableDuringInitialization.Should().BeTrue();
+            Environment.GetEnvironmentVariable("SteamAppId").Should().Be("268500");
+            Environment.GetEnvironmentVariable("SteamGameId").Should().Be("268500");
+            File.Exists(appIdPath).Should().BeFalse();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FLATPAK_ID", originalFlatpakId);
+            Environment.SetEnvironmentVariable("SteamAppId", originalSteamAppId);
+            Environment.SetEnvironmentVariable("SteamGameId", originalSteamGameId);
             if (File.Exists(appIdPath)) File.Delete(appIdPath);
         }
     }
@@ -264,10 +308,11 @@ public sealed class SteamWorkshopServiceTests
     private sealed class FakeClientApi : ISteamClientApi
     {
         public SteamInitialization Initialization { get; set; } = new(true, string.Empty, string.Empty);
+        public Func<SteamInitialization>? InitializeAction { get; set; }
         public int RunCallbackCount { get; private set; }
         public int ShutdownCount { get; private set; }
         public SteamClientLifetime? Lifetime { get; set; }
-        public SteamInitialization Initialize() => Initialization;
+        public SteamInitialization Initialize() => InitializeAction?.Invoke() ?? Initialization;
         public void RunCallbacks() => RunCallbackCount++;
         public void Shutdown() => ShutdownCount++;
     }

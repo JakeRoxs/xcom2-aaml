@@ -30,6 +30,7 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
     private bool autoSaveChanges;
     private decimal textScale = ApplicationSettingsDefaults.DefaultTextScale;
     private decimal iconScale = ApplicationSettingsDefaults.DefaultIconScale;
+    private GameRuntime runtime = ApplicationSettingsDefaults.Runtime;
     private bool preferencesLoaded;
     private bool preferencesDirty;
     private long preferencesRevision;
@@ -77,6 +78,18 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
     public IEnhancedCommand<Result> ApplyConfiguration { get; }
     public string Status => session.Status;
     public string Origin => session.Origin?.ToString() ?? "Not loaded";
+    public bool SupportsRuntimeSelection => OperatingSystem.IsLinux();
+    public string DetectedRuntime => OperatingSystem.IsWindows()
+        ? "Windows"
+        : OperatingSystem.IsLinux()
+            ? Runtime switch
+            {
+                GameRuntime.Auto => "Linux Auto (prefers native)",
+                GameRuntime.Native => "Linux Native",
+                GameRuntime.Proton => "Linux Proton",
+                _ => "Unknown",
+            }
+            : "Unknown";
     public string GameInstallationPath { get => gameInstallationPath; set => this.RaiseAndSetIfChanged(ref gameInstallationPath, value); }
     public GameVariant SelectedGame
     {
@@ -259,6 +272,18 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
             _ = PersistAutoSavePreferenceAsync(value);
         }
     }
+    public GameRuntime Runtime
+    {
+        get => runtime;
+        set
+        {
+            if (runtime == value) return;
+            this.RaiseAndSetIfChanged(ref runtime, value);
+            this.RaisePropertyChanged(nameof(DetectedRuntime));
+            MarkPreferencesDirty();
+        }
+    }
+    public IReadOnlyList<GameRuntime> RuntimeOptions { get; } = Enum.GetValues<GameRuntime>();
 
     public void Activate()
     {
@@ -335,7 +360,8 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
                 CheckForUpdates,
                 UpdateChannel,
                 TextScale,
-                IconScale);
+                IconScale,
+                Runtime);
             var result = await session.SavePreferencesAsync(request, cancellationToken);
             if (result.IsSuccess && revision == preferencesRevision) preferencesDirty = false;
             return result;
@@ -370,9 +396,10 @@ public sealed class DashboardViewModel : ReactiveObject, IDisposable
         autoSaveChanges = settings.AutoSaveChanges;
         textScale = settings.TextScale;
         iconScale = settings.IconScale;
+        runtime = settings.Runtime;
         preferencesDirty = false;
         preferencesLoaded = true;
-        foreach (var property in new[] { nameof(SelectedGame), nameof(GameInstallationPath), nameof(AllowLaunchWithMissingDependencies), nameof(LaunchArguments), nameof(ModRoots), nameof(CloseAfterLaunch), nameof(WorkshopStartupRefresh), nameof(Theme), nameof(AllowMultipleInstances), nameof(CheckForUpdates), nameof(UpdateChannel), nameof(AutoSaveChanges), nameof(TextScale), nameof(IconScale) }) this.RaisePropertyChanged(property);
+        foreach (var property in new[] { nameof(SelectedGame), nameof(GameInstallationPath), nameof(AllowLaunchWithMissingDependencies), nameof(LaunchArguments), nameof(ModRoots), nameof(CloseAfterLaunch), nameof(WorkshopStartupRefresh), nameof(Theme), nameof(AllowMultipleInstances), nameof(CheckForUpdates), nameof(UpdateChannel), nameof(AutoSaveChanges), nameof(TextScale), nameof(IconScale), nameof(Runtime) }) this.RaisePropertyChanged(property);
         RefreshPresets();
     }
 

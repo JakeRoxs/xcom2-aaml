@@ -6,6 +6,11 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationName>AAML</ApplicationName>
+    <AssemblyName>AAML</AssemblyName>
+    <AssemblyTitle>AAML</AssemblyTitle>
+    <Product>AAML</Product>
+    <CompanyName>AAML</CompanyName>
     <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) ">
@@ -43,6 +48,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Wayland" Version="12.1.1" />
     <PackageReference Include="DynamicData" Version="9.4.33" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
     <PackageReference Include="Optris.Icons.Avalonia.FontAwesome" Version="12.0.7" />
@@ -54,5 +60,11 @@
     <PackageReference Include="Zafiro.Avalonia.Dialogs" Version="53.3.0" />
     <PackageReference Include="Zafiro.Avalonia.Icons.Optris" Version="53.3.0" />
     <PackageReference Include="Zafiro.UI" Version="47.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Exclude native library PDBs from single-file bundle -->
+    <Content Remove="**/libHarfBuzzSharp.pdb" />
+    <Content Remove="**/libSkiaSharp.pdb" />
+    <Content Remove="runtimes/**/lib*.pdb" />
   </ItemGroup>
 </Project>

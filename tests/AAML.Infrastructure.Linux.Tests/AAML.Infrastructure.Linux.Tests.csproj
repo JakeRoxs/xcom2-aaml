@@ -8,6 +8,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="TestWotcResolve.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../src/AAML.Infrastructure.Linux/AAML.Infrastructure.Linux.csproj" />
     <ProjectReference Include="../../src/AAML.Infrastructure.Common/AAML.Infrastructure.Common.csproj" />
   </ItemGroup>

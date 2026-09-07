@@ -40,3 +40,59 @@ jobs:
           sudo apt-get install --yes appstream desktop-file-utils
           desktop-file-validate eng/linux/io.github.jakeroxs.xcom2_aaml.desktop
           appstreamcli validate --pedantic eng/linux/io.github.jakeroxs.xcom2_aaml.metainfo.xml
+      - if: runner.os == 'Linux'
+        name: Test AppImage packaging
+        shell: bash
+        run: bash eng/linux/test-appimage-packaging.sh
+
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v4
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  linux-packaging:
+    name: Build Linux portable packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - name: Publish Linux payload
+        run: |
+          dotnet publish src/AAML.Avalonia/AAML.Avalonia.csproj -c Release -r linux-x64 --self-contained true -o artifacts/linux-x64
+          dotnet publish tools/AAML.ProtonWrapper/AAML.ProtonWrapper.csproj -c Release -r linux-x64 --self-contained true -o artifacts/linux-x64/tools/proton-wrapper
+          bash eng/linux/stage-linux-package.sh artifacts/linux-x64
+      - name: Build and inspect AppImage
+        run: |
+          bash eng/linux/build-appdir.sh artifacts/linux-x64 artifacts/AAML.AppDir
+          bash eng/linux/package-appimage.sh artifacts/AAML.AppDir artifacts/AAML-linux-x86_64.AppImage
+          mkdir artifacts/appimage-extracted
+          (cd artifacts/appimage-extracted && ../AAML-linux-x86_64.AppImage --appimage-extract >/dev/null)
+          bash eng/linux/validate-appdir.sh artifacts/appimage-extracted/squashfs-root
+      - name: Install Flatpak toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+      - name: Build Flatpak bundle offline
+        run: bash eng/linux/build-flatpak-bundle.sh artifacts/linux-x64 artifacts/flatpak-work artifacts/AAML-linux-x86_64.flatpak
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AAML-linux-portable-packages
+          path: |
+            artifacts/AAML-linux-x86_64.AppImage
+            artifacts/AAML-linux-x86_64.AppImage.sha256
+            artifacts/AAML-linux-x86_64.flatpak
+          if-no-files-found: error

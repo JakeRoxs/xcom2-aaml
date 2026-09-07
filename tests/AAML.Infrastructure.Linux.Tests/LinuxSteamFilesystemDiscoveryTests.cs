@@ -182,5 +182,54 @@ public sealed class LinuxSteamFilesystemDiscoveryTests
         }
     }
 
+    [TestMethod]
+    [DoNotParallelize]
+    public async Task FlatpakEnvironment_UsesXdgSteamAliasWithoutDuplicatingNativeAlias()
+    {
+        if (!OperatingSystem.IsLinux()) Assert.Inconclusive("Filesystem Steam discovery requires Linux.");
+
+        var originalHome = Environment.GetEnvironmentVariable("HOME");
+        var originalData = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+        var originalFlatpakId = Environment.GetEnvironmentVariable("FLATPAK_ID");
+        var root = Path.Combine(Path.GetTempPath(), "AAML.FlatpakSteamDiscovery", Guid.NewGuid().ToString("N"));
+        var home = Path.Combine(root, "home");
+        var data = Path.Combine(root, "data");
+        var nativeSteam = Path.Combine(home, ".local", "share", "Steam");
+        var xdgSteam = Path.Combine(data, "Steam");
+
+        try
+        {
+            foreach (var steamRoot in new[] { nativeSteam, xdgSteam })
+            {
+                Directory.CreateDirectory(Path.Combine(steamRoot, "steamapps", "common", "XCOM 2"));
+                await File.WriteAllTextAsync(Path.Combine(steamRoot, "steamapps", "appmanifest_268500.acf"), "\"AppState\" { \"appid\" \"268500\" \"installdir\" \"XCOM 2\" }");
+            }
+            var steamLinks = Directory.CreateDirectory(Path.Combine(home, ".steam")).FullName;
+            Directory.CreateSymbolicLink(Path.Combine(steamLinks, "root"), nativeSteam);
+            Directory.CreateSymbolicLink(Path.Combine(steamLinks, "steam"), nativeSteam);
+            await File.WriteAllTextAsync(
+                Path.Combine(xdgSteam, "steamapps", "libraryfolders.vdf"),
+                $"\"libraryfolders\" {{ \"0\" {{ \"path\" \"{nativeSteam.Replace("\\", "/")}\" }} }}");
+
+            Environment.SetEnvironmentVariable("HOME", home);
+            Environment.SetEnvironmentVariable("XDG_DATA_HOME", data);
+            Environment.SetEnvironmentVariable("FLATPAK_ID", "io.github.jakeroxs.xcom2_aaml");
+
+            var result = await new LinuxSteamFilesystemDiscovery(new LinuxPhysicalPathResolver())
+                .DiscoverAsync(new SteamDiscoveryRequest([SteamAppId.Xcom2]), TestContext.CancellationToken);
+
+            result.IsSuccess.Should().BeTrue();
+            result.Value!.Applications.Should().ContainSingle(application => application.InstallDirectoryExists);
+            result.Value.Applications.Single().GameInstallPath.Should().Be(Path.Combine(xdgSteam, "steamapps", "common", "XCOM 2"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("HOME", originalHome);
+            Environment.SetEnvironmentVariable("XDG_DATA_HOME", originalData);
+            Environment.SetEnvironmentVariable("FLATPAK_ID", originalFlatpakId);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
     public TestContext TestContext { get; set; }
 }

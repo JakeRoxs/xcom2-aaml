@@ -2,6 +2,7 @@ using AAML.Application.Common;
 using AAML.Application.Ports;
 using AAML.Application.Steam;
 using AAML.Domain.Games;
+using AAML.Domain.Launching;
 using AAML.Infrastructure.Linux.Launching;
 
 namespace AAML.Infrastructure.Linux.Steam;
@@ -63,7 +64,7 @@ public sealed class LinuxEnvironmentDiagnosticService(ISteamFilesystemDiscovery 
 
     private static LinuxGameVariantDiagnostic InspectVariant(string installation, GameVariant variant)
     {
-        var layout = LinuxSteamGameLayout.Resolve(installation, variant);
+        var layout = LinuxGameRuntimeLayout.Resolve(installation, variant, GameRuntime.Auto);
         if (!layout.IsSuccess)
             return new(variant.ToString(), false, layout.Error!.Code, layout.Error.Message, installation, null, null, null, null, null, false, null, false, []);
         var value = layout.Value!;

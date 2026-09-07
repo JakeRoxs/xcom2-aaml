@@ -21,10 +21,16 @@ public static class SteamProbeRunner
             return 64;
         }
 
-        var appIdPath = Path.Combine(AppContext.BaseDirectory, "steam_appid.txt");
+        var originalDirectory = Environment.CurrentDirectory;
+        var probeDirectory = Path.Combine(Path.GetTempPath(), $"aaml-steam-probe-{Environment.ProcessId}");
+        Directory.CreateDirectory(probeDirectory);
         try
         {
-            await File.WriteAllTextAsync(appIdPath, Xcom2AppId.ToString(System.Globalization.CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Combine(probeDirectory, "steam_appid.txt"),
+                Xcom2AppId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                cancellationToken).ConfigureAwait(false);
+            Environment.CurrentDirectory = probeDirectory;
             await using var client = SteamWorkshopClient.Create(new SteamOptions(TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(20)));
             var subscriptions = await client.Workshop.GetSubscribedItemsAsync(cancellationToken).ConfigureAwait(false);
             if (!subscriptions.IsSuccess)
@@ -75,7 +81,8 @@ public static class SteamProbeRunner
         }
         finally
         {
-            try { File.Delete(appIdPath); } catch (IOException) { }
+            Environment.CurrentDirectory = originalDirectory;
+            Directory.Delete(probeDirectory, recursive: true);
         }
     }
 

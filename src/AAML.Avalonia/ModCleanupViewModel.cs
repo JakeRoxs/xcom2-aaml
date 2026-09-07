@@ -40,15 +40,15 @@ public sealed class ModCleanupViewModel : ReactiveObject, IDisposable
     private async Task<Result> PreviewAsync()
     {
         Invalidate("Preparing cleanup preview...");
-        if (session.Settings is null) return Result.Failure("AAML is not initialized.");
+        if (session.Settings is null) { this.RaisePropertyChanged(nameof(CanConfirm)); return Result.Failure("AAML is not initialized."); }
         operation?.Dispose(); operation = new CancellationTokenSource();
         var revision = previewRevision;
         var cancellationToken = operation.Token;
         AAML.Application.Common.Result<ModCleanupPreview> result;
         try { result = await cleanup.PreviewAsync(new(session.DiscoveredMods, SourcePolicy, ShaderPolicy, IncludeWorkshop, session.Settings.ModRootLocations), cancellationToken); }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return Result.Failure("Cleanup inputs changed while previewing. Preview again."); }
-        if (revision != previewRevision) return Result.Failure("Cleanup inputs changed while previewing. Preview again.");
-        if (!result.IsSuccess) return Result.Failure(result.Error!.Message);
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { this.RaisePropertyChanged(nameof(CanConfirm)); return Result.Failure("Cleanup inputs changed while previewing. Preview again."); }
+        if (revision != previewRevision) { this.RaisePropertyChanged(nameof(CanConfirm)); return Result.Failure("Cleanup inputs changed while previewing. Preview again."); }
+        if (!result.IsSuccess) { this.RaisePropertyChanged(nameof(CanConfirm)); return Result.Failure(result.Error!.Message); }
         preview = result.Value!; this.RaisePropertyChanged(nameof(CanConfirm)); Report = Format(preview); ScheduleExpiry(preview); return Result.Success();
     }
     private async Task<Result> ConfirmAsync()

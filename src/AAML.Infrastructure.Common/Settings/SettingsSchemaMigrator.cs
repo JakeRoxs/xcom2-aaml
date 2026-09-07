@@ -29,6 +29,7 @@ internal sealed class SettingsMigrationState
     public bool AutoSaveChanges { get; set; }
     public decimal TextScale { get; set; }
     public decimal IconScale { get; set; }
+    public string? Runtime { get; set; }
 }
 
 internal sealed record SettingsReadResult(AAML.Application.Settings.ApplicationSettings Settings, int SourceSchemaVersion, bool RequiresCanonicalRewrite);
@@ -57,6 +58,16 @@ internal static class SettingsSchemaMigrator
             root["schemaVersion"] = ApplicationSettingsDefaults.CurrentSchemaVersion;
             root["textScale"] = ApplicationSettingsDefaults.DefaultTextScale;
             root["iconScale"] = ApplicationSettingsDefaults.DefaultIconScale;
+            root["runtime"] = "Auto";
+            var migrated = Deserialize<CurrentSettingsDocument>(root.ToString(Formatting.None), ApplicationSettingsDefaults.CurrentSchemaVersion);
+            return new SettingsReadResult(ApplicationSettingsMapper.FromCurrentDocument(migrated), schema, true);
+        }
+
+        if (schema == 10)
+        {
+            ValidateCanonical(root, 10);
+            root["schemaVersion"] = ApplicationSettingsDefaults.CurrentSchemaVersion;
+            root["runtime"] = "Auto";
             var migrated = Deserialize<CurrentSettingsDocument>(root.ToString(Formatting.None), ApplicationSettingsDefaults.CurrentSchemaVersion);
             return new SettingsReadResult(ApplicationSettingsMapper.FromCurrentDocument(migrated), schema, true);
         }
@@ -103,6 +114,7 @@ internal static class SettingsSchemaMigrator
             "modGrid", "retainedWorkshopItems", "checkForUpdates", "updateChannel", "navigationRailMode", "autoSaveChanges"
         ];
         if (schema >= 10) expected = [.. expected, "textScale", "iconScale"];
+        if (schema >= 11) expected = [.. expected, "runtime"];
         if (!root.Properties().Select(property => property.Name).ToHashSet(StringComparer.Ordinal).SetEquals(expected))
             throw new InvalidDataException($"Schema {schema} must contain exactly the canonical settings members.");
 
@@ -116,6 +128,12 @@ internal static class SettingsSchemaMigrator
             var iconScale = root.Value<decimal>("iconScale");
             if (!ApplicationSettingsDefaults.IsTextScaleSupported(textScale)) throw new InvalidDataException("Schema 10 textScale is outside the supported range.");
             if (!ApplicationSettingsDefaults.IsIconScaleSupported(iconScale)) throw new InvalidDataException("Schema 10 iconScale is outside the supported range.");
+        }
+        if (schema >= 11)
+        {
+            RequireType(root, JTokenType.String, "runtime");
+            var runtime = root.Value<string>("runtime");
+            if (runtime is not ("Auto" or "Native" or "Proton")) throw new InvalidDataException("Schema 11 runtime must be Auto, Native, or Proton.");
         }
         if (root["gameInstallationLocation"]?.Type is not (JTokenType.String or JTokenType.Null))
             throw new InvalidDataException($"Schema {schema} gameInstallationLocation must be a string or null.");
@@ -268,6 +286,7 @@ internal static class SettingsSchemaMigrator
     {
         state.TextScale = ApplicationSettingsDefaults.DefaultTextScale;
         state.IconScale = ApplicationSettingsDefaults.DefaultIconScale;
+        state.Runtime = "Auto";
         return state;
     }
 }

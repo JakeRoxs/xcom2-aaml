@@ -38,9 +38,22 @@ jobs:
         run: |
           New-Item -Path ${{ runner.temp }}\scanner -ItemType Directory
           dotnet tool update dotnet-sonarscanner --tool-path ${{ runner.temp }}\scanner
+      - name: Cache .NET coverage tool
+        id: cache-dotnet-coverage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}\coverage
+          key: ${{ runner.os }}-dotnet-coverage-18.11.0
+      - name: Install .NET coverage tool
+        if: steps.cache-dotnet-coverage.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          New-Item -Path ${{ runner.temp }}\coverage -ItemType Directory
+          dotnet tool install dotnet-coverage --tool-path ${{ runner.temp }}\coverage --version 18.11.0
       - name: Build and analyze
         shell: powershell
         run: |
-          ${{ runner.temp }}\scanner\dotnet-sonarscanner begin /k:"JakeRoxs_xcom2-aaml_a670e370-ec12-40c3-82fe-cfa44d5ef78e" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="${{ secrets.SONAR_HOST_URL }}"
-          dotnet build
+          ${{ runner.temp }}\scanner\dotnet-sonarscanner begin /k:"JakeRoxs_xcom2-aaml_a670e370-ec12-40c3-82fe-cfa44d5ef78e" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="${{ secrets.SONAR_HOST_URL }}" /d:sonar.cs.vscoveragexml.reportsPaths="${{ runner.temp }}\coverage.xml" /d:sonar.cs.vstest.reportsPaths="${{ runner.temp }}\TestResults\*.trx"
+          dotnet build AAML.slnx --configuration Release --no-incremental
+          ${{ runner.temp }}\coverage\dotnet-coverage collect "dotnet test AAML.slnx --configuration Release --no-build --no-restore --logger trx --results-directory ${{ runner.temp }}\TestResults" -f xml -o "${{ runner.temp }}\coverage.xml"
           ${{ runner.temp }}\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"

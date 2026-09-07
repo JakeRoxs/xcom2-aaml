@@ -29,7 +29,8 @@ public sealed record ApplicationSettings(
     NavigationRailMode NavigationRailMode = NavigationRailMode.Expanded,
     bool AutoSaveChanges = false,
     decimal TextScale = ApplicationSettingsDefaults.DefaultTextScale,
-    decimal IconScale = ApplicationSettingsDefaults.DefaultIconScale)
+    decimal IconScale = ApplicationSettingsDefaults.DefaultIconScale,
+    GameRuntime Runtime = GameRuntime.Auto)
 {
     public GameLocationSettings LocationFor(GameVariant variant)
     {

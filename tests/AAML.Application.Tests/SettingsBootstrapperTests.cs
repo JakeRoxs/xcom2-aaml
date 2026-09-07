@@ -129,7 +129,7 @@ public sealed class SettingsBootstrapperTests
             Directory.CreateDirectory(root);
             var repository = MissingRepository();
             var service = new SettingsBootstrapper(repository, new FakeImporter());
-            var result = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [new LaunchArgument("-log"), new LaunchArgument("-Name=Two Words")], [root], true, true, WorkshopStartupRefreshPolicy.ActiveMods, ThemePreference.Dark, true, false, UpdateChannelPreference.Prerelease, 1.25m, 1.40m, TestContext.CancellationToken);
+            var result = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [new LaunchArgument("-log"), new LaunchArgument("-Name=Two Words")], [root], true, true, WorkshopStartupRefreshPolicy.ActiveMods, ThemePreference.Dark, true, false, UpdateChannelPreference.Prerelease, 1.25m, 1.40m, GameRuntime.Auto, TestContext.CancellationToken);
 
             result.Value!.LaunchArguments.Select(argument => argument.Value).Should().Equal("-log", "-Name=Two Words");
             result.Value.ModRootLocations.Should().Equal(Path.GetFullPath(root));
@@ -142,6 +142,23 @@ public sealed class SettingsBootstrapperTests
             result.Value.AllowMultipleInstances.Should().BeTrue();
             result.Value.TextScale.Should().Be(1.25m);
             result.Value.IconScale.Should().Be(1.40m);
+            result.Value.Runtime.Should().Be(GameRuntime.Auto);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task Preferences_PersistRuntimePreference()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "AAML Manual Root", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            var repository = MissingRepository();
+            var service = new SettingsBootstrapper(repository, new FakeImporter());
+            var result = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [], [root], false, false, WorkshopStartupRefreshPolicy.AllMods, ThemePreference.System, false, true, UpdateChannelPreference.Stable, 1.00m, 1.00m, GameRuntime.Proton, TestContext.CancellationToken);
+
+            result.Value!.Runtime.Should().Be(GameRuntime.Proton);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
@@ -152,8 +169,8 @@ public sealed class SettingsBootstrapperTests
         var repository = MissingRepository();
         var service = new SettingsBootstrapper(repository, new FakeImporter());
 
-        var invalidText = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [], [], false, false, WorkshopStartupRefreshPolicy.AllMods, ThemePreference.System, false, true, UpdateChannelPreference.Stable, 1.51m, 1m, TestContext.CancellationToken);
-        var invalidIcon = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [], [], false, false, WorkshopStartupRefreshPolicy.AllMods, ThemePreference.System, false, true, UpdateChannelPreference.Stable, 1m, 0.74m, TestContext.CancellationToken);
+        var invalidText = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [], [], false, false, WorkshopStartupRefreshPolicy.AllMods, ThemePreference.System, false, true, UpdateChannelPreference.Stable, 1.51m, 1m, GameRuntime.Auto, TestContext.CancellationToken);
+        var invalidIcon = await service.SavePreferencesAsync(Settings(GameVariant.XCom2), [], [], false, false, WorkshopStartupRefreshPolicy.AllMods, ThemePreference.System, false, true, UpdateChannelPreference.Stable, 1m, 0.74m, GameRuntime.Auto, TestContext.CancellationToken);
 
         invalidText.Error!.Code.Should().Be("settings.text_scale_invalid");
         invalidIcon.Error!.Code.Should().Be("settings.icon_scale_invalid");

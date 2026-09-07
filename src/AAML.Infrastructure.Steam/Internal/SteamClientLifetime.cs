@@ -13,6 +13,7 @@ internal sealed class SteamClientLifetime(ISteamClientApi api, SteamOptions opti
     private string? previousSteamGameId;
     private string? previousSteamAppIdFileContent;
     private bool previousSteamAppIdFileExists;
+    private bool steamAppIdFileConfigured;
     private bool environmentConfigured;
     private readonly string steamAppIdFilePath = Path.Combine(AppContext.BaseDirectory, "steam_appid.txt");
 
@@ -34,7 +35,7 @@ internal sealed class SteamClientLifetime(ISteamClientApi api, SteamOptions opti
             }
 
             ConfigureEnvironment();
-            var initialization = api.Initialize();
+            var initialization = InitializeApi();
             if (!initialization.IsSuccess)
             {
                 RestoreEnvironment();
@@ -96,18 +97,51 @@ internal sealed class SteamClientLifetime(ISteamClientApi api, SteamOptions opti
         if (environmentConfigured || options.AppId == 0) return;
         previousSteamAppId = Environment.GetEnvironmentVariable("SteamAppId");
         previousSteamGameId = Environment.GetEnvironmentVariable("SteamGameId");
-        previousSteamAppIdFileExists = File.Exists(steamAppIdFilePath);
-        if (previousSteamAppIdFileExists)
+        var isFlatpak = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FLATPAK_ID"));
+        if (!isFlatpak)
         {
-            previousSteamAppIdFileContent = File.ReadAllText(steamAppIdFilePath);
+            previousSteamAppIdFileExists = File.Exists(steamAppIdFilePath);
+            if (previousSteamAppIdFileExists)
+            {
+                previousSteamAppIdFileContent = File.ReadAllText(steamAppIdFilePath);
+            }
         }
 
         var value = options.AppId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Environment.SetEnvironmentVariable("SteamAppId", value);
         Environment.SetEnvironmentVariable("SteamGameId", value);
 
-        File.WriteAllText(steamAppIdFilePath, value);
+        if (!isFlatpak)
+        {
+            File.WriteAllText(steamAppIdFilePath, value);
+            steamAppIdFileConfigured = true;
+        }
         environmentConfigured = true;
+    }
+
+    private SteamInitialization InitializeApi()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FLATPAK_ID")))
+        {
+            return api.Initialize();
+        }
+
+        var originalDirectory = Environment.CurrentDirectory;
+        var initializationDirectory = Path.Combine(Path.GetTempPath(), $"aaml-steam-client-{Environment.ProcessId}");
+        Directory.CreateDirectory(initializationDirectory);
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(initializationDirectory, "steam_appid.txt"),
+                options.AppId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Environment.CurrentDirectory = initializationDirectory;
+            return api.Initialize();
+        }
+        finally
+        {
+            Environment.CurrentDirectory = originalDirectory;
+            Directory.Delete(initializationDirectory, recursive: true);
+        }
     }
 
     private void RestoreEnvironment()
@@ -116,17 +150,18 @@ internal sealed class SteamClientLifetime(ISteamClientApi api, SteamOptions opti
         Environment.SetEnvironmentVariable("SteamAppId", previousSteamAppId);
         Environment.SetEnvironmentVariable("SteamGameId", previousSteamGameId);
 
-        if (previousSteamAppIdFileExists)
+        if (steamAppIdFileConfigured && previousSteamAppIdFileExists)
         {
             File.WriteAllText(steamAppIdFilePath, previousSteamAppIdFileContent ?? string.Empty);
         }
-        else if (File.Exists(steamAppIdFilePath))
+        else if (steamAppIdFileConfigured && File.Exists(steamAppIdFilePath))
         {
             File.Delete(steamAppIdFilePath);
         }
 
         previousSteamAppIdFileContent = null;
         previousSteamAppIdFileExists = false;
+        steamAppIdFileConfigured = false;
         environmentConfigured = false;
     }
 

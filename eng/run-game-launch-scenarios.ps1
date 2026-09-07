@@ -226,7 +226,7 @@ foreach ($scenario in $scenarios) {
             if ($process.HasExited) { throw "AAML exited before initialization with code $($process.ExitCode)." }
             $condition = [System.Windows.Automation.AndCondition]::new(
                 [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id),
-                [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Avalonia Alternative Mod Launcher'))
+                [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'AAML'))
             $window = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $condition)
             if (Test-Path -LiteralPath $envInfo.LogPath -PathType Leaf) {
                 $initComplete = [bool](Select-String -LiteralPath $envInfo.LogPath -Pattern 'application.initialization_completed' -Quiet)
@@ -346,7 +346,7 @@ foreach ($scenario in $scenarios) {
 
 $summary = [ordered]@{
     schemaVersion = 1
-    product = 'Avalonia Alternative Mod Launcher'
+    product = 'AAML'
     artifactDirectory = $artifact
     executable = $executable
     startedAtUtc = $startedAt

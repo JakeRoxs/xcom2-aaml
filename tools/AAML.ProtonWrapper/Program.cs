@@ -58,26 +58,30 @@ static async Task<int> RunWrapperAsync(string[] arguments, CancellationToken can
         !string.IsNullOrWhiteSpace(xdgRuntime) ? xdgRuntime.TrimEnd('/') + "/aaml" : null;
     if (runtime is null) return Fail("steam.launch.runtime_unavailable", "No trusted runtime directory is available.", 75);
 
+    var diagnostics = WrapperDiagnostics.Create();
+    diagnostics.Write("wrapper.started", new { appId = appIdValue, argumentCount = arguments.Length });
+
     var store = new LinuxSteamLaunchRequestStore(runtime);
     var claim = await store.TryClaimAsync(new SteamAppId(appIdValue), DateTimeOffset.UtcNow, cancellationToken);
-    if (!claim.IsSuccess) return Fail(claim.Error!.Code, claim.Error.Message, 65);
+    if (!claim.IsSuccess) return diagnostics.Fail(claim.Error!.Code, claim.Error.Message, 65);
     var request = claim.Value?.Request;
+    diagnostics.Write("request.claimed", new { found = request is not null, variant = request?.Variant.ToString(), activeModCount = request?.ActivePackageIds.Count });
 
     if (request is not null)
     {
         if (!File.Exists(request.TargetExecutablePath) || !Directory.Exists(request.GameInstallPath))
-            return Fail("steam.launch.target_not_found", "The requested executable or installation no longer exists.", 66);
+            return diagnostics.Fail("steam.launch.target_not_found", "The requested executable or installation no longer exists.", 66);
         var physical = new LinuxPhysicalPathResolver();
         var install = physical.ResolveExisting(request.GameInstallPath);
         var target = physical.ResolveExisting(request.TargetExecutablePath);
         if (!install.IsSuccess || !target.IsSuccess || new LinuxPathSemantics().IsContainedBy(target.Value!, install.Value!).Value != true)
-            return Fail("steam.launch.target_outside_install", "The requested executable is outside the selected installation.", 65);
+            return diagnostics.Fail("steam.launch.target_outside_install", "The requested executable is outside the selected installation.", 65);
         var activeMods = request.ActivePackageIds.Select((package, order) => new GameLaunchMod(
             new ModKey(ModSource.Manual, request.TargetExecutablePath + "#" + package), new PackageId(package), order, false)).ToArray();
         var configurationRequest = new GameLaunchRequest(request.Variant, request.GameInstallPath, request.ModRootLocations, activeMods,
             request.AdditionalArguments.Select(argument => new LaunchArgument(argument)).ToArray());
         var configured = await new LinuxGameConfigurationWriter(new AtomicTextWriter()).ApplyAsync(configurationRequest, cancellationToken);
-        if (!configured.IsSuccess) return Fail(configured.Error!.Code, configured.Error.Message, 74);
+        if (!configured.IsSuccess) return diagnostics.Fail(configured.Error!.Code, configured.Error.Message, 74);
     }
 
     var environment = Environment.GetEnvironmentVariables()
@@ -85,18 +89,34 @@ static async Task<int> RunWrapperAsync(string[] arguments, CancellationToken can
         .Where(entry => entry.Key is string && entry.Value is string)
         .ToDictionary(entry => (string)entry.Key, entry => (string)entry.Value!, StringComparer.Ordinal);
     var plan = ProtonCommandPlanner.Plan(request, arguments, environment, Environment.ProcessPath ?? "aaml-proton-wrapper");
-    if (!plan.IsSuccess) return Fail(plan.Error!.Code, plan.Error.Message, 65);
+    if (!plan.IsSuccess) return diagnostics.Fail(plan.Error!.Code, plan.Error.Message, 65);
+    diagnostics.Write("command.planned", new { tokens = plan.Value!.Tokens });
 
     Process? process = null;
+    FileStream? standardOutput = null;
+    FileStream? standardError = null;
     try
     {
-        var start = new ProcessStartInfo { FileName = plan.Value!.Tokens[0], UseShellExecute = false };
+        var start = new ProcessStartInfo
+        {
+            FileName = plan.Value!.Tokens[0],
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
         foreach (var token in plan.Value.Tokens.Skip(1)) start.ArgumentList.Add(token);
         start.Environment.Clear();
         foreach (var (key, value) in plan.Value.Environment) start.Environment[key] = value;
         process = Process.Start(start);
-        if (process is null) return Fail("steam.launch.exec_failed", "The expanded Steam command did not start.", 126);
+        if (process is null) return diagnostics.Fail("steam.launch.exec_failed", "The expanded Steam command did not start.", 126);
+        diagnostics.Write("child.started", new { process.Id });
+        standardOutput = File.Create(diagnostics.StandardOutputPath);
+        standardError = File.Create(diagnostics.StandardErrorPath);
+        var copyOutput = process.StandardOutput.BaseStream.CopyToAsync(standardOutput, cancellationToken);
+        var copyError = process.StandardError.BaseStream.CopyToAsync(standardError, cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
+        await Task.WhenAll(copyOutput, copyError);
+        diagnostics.Write("child.exited", new { process.Id, process.ExitCode });
         return process.ExitCode;
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -106,10 +126,12 @@ static async Task<int> RunWrapperAsync(string[] arguments, CancellationToken can
     }
     catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
     {
-        return Fail("steam.launch.exec_failed", exception.Message, 126);
+        return diagnostics.Fail("steam.launch.exec_failed", exception.Message, 126);
     }
     finally
     {
+        standardOutput?.Dispose();
+        standardError?.Dispose();
         process?.Dispose();
     }
 }
@@ -131,4 +153,45 @@ static int Fail(string code, string message, int exitCode)
 {
     Console.Error.WriteLine(JsonSerializer.Serialize(new { success = false, error = new { code, message } }));
     return exitCode;
+}
+
+file sealed class WrapperDiagnostics
+{
+    private readonly string logPath;
+
+    private WrapperDiagnostics(string directory, string launchId)
+    {
+        Directory.CreateDirectory(directory);
+        logPath = Path.Combine(directory, "wrapper.jsonl");
+        StandardOutputPath = Path.Combine(directory, $"{launchId}.stdout.log");
+        StandardErrorPath = Path.Combine(directory, $"{launchId}.stderr.log");
+    }
+
+    public string StandardOutputPath { get; }
+    public string StandardErrorPath { get; }
+
+    public static WrapperDiagnostics Create()
+    {
+        var stateHome = Environment.GetEnvironmentVariable("XDG_STATE_HOME");
+        if (string.IsNullOrWhiteSpace(stateHome))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            stateHome = Path.Combine(home, ".local", "state");
+        }
+        var launchId = $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfffZ}-{Environment.ProcessId}";
+        return new WrapperDiagnostics(Path.Combine(stateHome, "aaml", "Logs", "proton-wrapper"), launchId);
+    }
+
+    public void Write(string eventName, object properties)
+    {
+        var entry = JsonSerializer.Serialize(new { timestamp = DateTimeOffset.UtcNow, eventName, properties });
+        File.AppendAllText(logPath, entry + Environment.NewLine);
+    }
+
+    public int Fail(string code, string message, int exitCode)
+    {
+        Write("wrapper.failed", new { code, message, exitCode });
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { success = false, error = new { code, message } }));
+        return exitCode;
+    }
 }

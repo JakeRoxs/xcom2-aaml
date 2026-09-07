@@ -9,10 +9,10 @@ public sealed class AutomationSemanticContractTests
 {
     private static readonly IReadOnlyDictionary<string, string[]> RequiredIds = new Dictionary<string, string[]>
     {
-        ["DashboardView.axaml"] = ["DashboardPage", "DashboardGamePathTextBox", "DashboardLaunchArgumentsTextBox", "DashboardLaunchPresetPicker", "DashboardLaunchPresetDiagnostics", "DashboardWorkshopPolicyCombo", "DashboardTextScale", "DashboardIconScale", "DashboardResetAccessibilitySizing", "DashboardAutoSaveToggle", "DashboardDetectSteamButton", "DashboardSavePreferencesButton", "DashboardLaunchButton", "DashboardStatus"],
+        ["DashboardView.axaml"] = ["DashboardPage", "DashboardGamePathTextBox", "DashboardLaunchArgumentsTextBox", "DashboardLaunchPresetPicker", "DashboardLaunchPresetDiagnostics", "DashboardRuntimeSelector", "DashboardWorkshopPolicyCombo", "DashboardTextScale", "DashboardIconScale", "DashboardResetAccessibilitySizing", "DashboardAutoSaveToggle", "DashboardDetectSteamButton", "DashboardSavePreferencesButton", "DashboardLaunchButton", "DashboardStatus"],
         ["ModsView.axaml"] = ["ModsPage", "ModsRefreshButton", "ModsSearchTextBox", "ModsGrid", "ModsActiveCheckBox", "ModsGroupToggle", "ModsCopySelected", "ModsCopyNamesButton", "ModsCopyPathsButton", "ModsCopyWorkshopButton", "ModsCopyReportButton", "ModsDangerZone", "ModsStatus"],
         ["ConflictsView.axaml"] = ["ConflictsPage", "ConflictsRefreshButton", "ConflictsSearchTextBox", "ConflictsStatus"],
-        ["ConfigurationsView.axaml"] = ["ConfigurationsPage", "ConfigurationsOpenButton", "ConfigurationsEditor", "ConfigurationsRefreshButton", "ConfigurationsStatus"],
+        ["ConfigurationsView.axaml"] = ["ConfigurationsPage", "ConfigurationsDocumentPicker", "ConfigurationsOpenButton", "ConfigurationsEditor", "ConfigurationsRefreshButton", "ConfigurationsStatus"],
         ["ProfilesView.axaml"] = ["ProfilesPage", "ProfilesNameTextBox", "ProfilesCreateButton", "ProfilesApplyButton", "ProfilesConfirmLegacyButton", "ProfilesStatus"],
         ["MigrationView.axaml"] = ["MigrationPage", "MigrationPreviewActiveModsButton", "MigrationConfirmActiveModsButton", "MigrationPreviewModRootsButton", "MigrationConfirmModRootsButton", "MigrationModRootList", "MigrationReport"],
         ["SupportView.axaml"] = ["SupportPage", "SupportCheckUpdatesButton", "SupportCopyReportButton", "SupportUpdateStatus", "SupportOpenGameInstallationButton", "SupportOpenGameUserDataButton", "SupportOpenGameConfigurationButton", "SupportOpenGameLogButton"],
@@ -126,6 +126,25 @@ public sealed class AutomationSemanticContractTests
         documents["DashboardView.axaml"].Descendants().Single(element => Id(element) == "DashboardAutoSaveToggle")
             .Attribute("Content")!.Value.Should().Be("Auto-save changes");
         documents["ModsView.axaml"].Descendants().Select(Id).Should().NotContain("DashboardAutoSaveToggle");
+    }
+
+    [TestMethod]
+    public void DashboardRuntimeSelectorIsPlatformGated()
+    {
+        var selector = LoadViews()["DashboardView.axaml"].Descendants()
+            .Single(element => Id(element) == "DashboardRuntimeSelector");
+
+        selector.Attribute("IsVisible")!.Value.Should().Be("{Binding SupportsRuntimeSelection}");
+    }
+
+    [TestMethod]
+    public void ConfigurationDocumentPickerHasStableWidth()
+    {
+        var picker = LoadViews()["ConfigurationsView.axaml"].Descendants()
+            .Single(element => Id(element) == "ConfigurationsDocumentPicker");
+
+        picker.Attribute("Width")!.Value.Should().Be("640");
+        picker.Attribute("HorizontalAlignment")!.Value.Should().Be("Left");
     }
 
     [TestMethod]

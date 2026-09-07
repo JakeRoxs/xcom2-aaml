@@ -255,6 +255,7 @@ public sealed class ApplicationSession(IServiceProvider serviceProvider) : React
             request.UpdateChannel,
             request.TextScale,
             request.IconScale,
+            request.Runtime,
             token), cancellationToken);
         if (!result.IsSuccess) { Status = result.Error!.Message; return Result.Failure(result.Error); }
         Settings = result.Value;
@@ -1300,7 +1301,8 @@ public sealed class ApplicationSession(IServiceProvider serviceProvider) : React
         bool CheckForUpdates,
         UpdateChannelPreference UpdateChannel,
         decimal TextScale,
-        decimal IconScale);
+        decimal IconScale,
+        GameRuntime Runtime);
 
     private static string DetermineDependencyStatusLabel(ModInstallation? installation) => installation is null ? "Missing" : "Satisfied";
 

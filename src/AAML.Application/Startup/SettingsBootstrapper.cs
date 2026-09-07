@@ -20,7 +20,7 @@ public interface ISettingsBootstrapper
     Task<Result<ApplicationSettings>> SelectGameAsync(ApplicationSettings settings, GameVariant variant, CancellationToken cancellationToken);
     Task<Result<ApplicationSettings>> SetGameInstallationAsync(ApplicationSettings settings, string installationPath, CancellationToken cancellationToken);
     Task<Result<ApplicationSettings>> SetAllowLaunchWithMissingDependenciesAsync(ApplicationSettings settings, bool allow, CancellationToken cancellationToken);
-    Task<Result<ApplicationSettings>> SavePreferencesAsync(ApplicationSettings settings, IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> modRoots, bool allowMissingDependencies, bool closeAfterLaunch, WorkshopStartupRefreshPolicy startupRefresh, ThemePreference theme, bool allowMultipleInstances, bool checkForUpdates, UpdateChannelPreference updateChannel, decimal textScale, decimal iconScale, CancellationToken cancellationToken);
+    Task<Result<ApplicationSettings>> SavePreferencesAsync(ApplicationSettings settings, IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> modRoots, bool allowMissingDependencies, bool closeAfterLaunch, WorkshopStartupRefreshPolicy startupRefresh, ThemePreference theme, bool allowMultipleInstances, bool checkForUpdates, UpdateChannelPreference updateChannel, decimal textScale, decimal iconScale, GameRuntime runtime, CancellationToken cancellationToken);
     Task<Result<ApplicationSettings>> SaveModGridPreferencesAsync(ApplicationSettings settings, ModGridPreferences preferences, CancellationToken cancellationToken);
     Task<Result<ApplicationSettings>> SetNavigationRailModeAsync(ApplicationSettings settings, NavigationRailMode mode, CancellationToken cancellationToken);
     Task<Result<ApplicationSettings>> SetAutoSaveChangesAsync(ApplicationSettings settings, bool enabled, CancellationToken cancellationToken);
@@ -76,7 +76,7 @@ public sealed class SettingsBootstrapper(ISettingsRepository repository, ILegacy
         return saved.IsSuccess ? Result<ApplicationSettings>.Success(updated) : Result<ApplicationSettings>.Failure(saved.Error!);
     }
 
-    public async Task<Result<ApplicationSettings>> SavePreferencesAsync(ApplicationSettings settings, IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> modRoots, bool allowMissingDependencies, bool closeAfterLaunch, WorkshopStartupRefreshPolicy startupRefresh, ThemePreference theme, bool allowMultipleInstances, bool checkForUpdates, UpdateChannelPreference updateChannel, decimal textScale, decimal iconScale, CancellationToken cancellationToken)
+    public async Task<Result<ApplicationSettings>> SavePreferencesAsync(ApplicationSettings settings, IReadOnlyList<LaunchArgument> arguments, IReadOnlyList<string> modRoots, bool allowMissingDependencies, bool closeAfterLaunch, WorkshopStartupRefreshPolicy startupRefresh, ThemePreference theme, bool allowMultipleInstances, bool checkForUpdates, UpdateChannelPreference updateChannel, decimal textScale, decimal iconScale, GameRuntime runtime, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(settings);
         try
@@ -89,7 +89,7 @@ public sealed class SettingsBootstrapper(ISettingsRepository repository, ILegacy
             if (!ApplicationSettingsDefaults.IsIconScaleSupported(iconScale)) return Result<ApplicationSettings>.Failure(new Error("settings.icon_scale_invalid", $"Icon scale must be between {ApplicationSettingsDefaults.MinimumIconScale} and {ApplicationSettingsDefaults.MaximumIconScale}.", ErrorKind.Validation));
             var locations = settings.GameLocations?.ToDictionary() ?? [];
             locations[settings.SelectedGame] = new GameLocationSettings(settings.GameInstallationLocation, roots);
-            var updated = settings with { LaunchArguments = arguments.ToArray(), ModRootLocations = roots, GameLocations = locations, AllowLaunchWithMissingDependencies = allowMissingDependencies, CloseAfterLaunch = closeAfterLaunch, WorkshopStartupRefresh = startupRefresh, Theme = theme, AllowMultipleInstances = allowMultipleInstances, CheckForUpdates = checkForUpdates, UpdateChannel = updateChannel, TextScale = textScale, IconScale = iconScale };
+            var updated = settings with { LaunchArguments = arguments.ToArray(), ModRootLocations = roots, GameLocations = locations, AllowLaunchWithMissingDependencies = allowMissingDependencies, CloseAfterLaunch = closeAfterLaunch, WorkshopStartupRefresh = startupRefresh, Theme = theme, AllowMultipleInstances = allowMultipleInstances, CheckForUpdates = checkForUpdates, UpdateChannel = updateChannel, TextScale = textScale, IconScale = iconScale, Runtime = runtime };
             var saved = await repository.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
             return saved.IsSuccess ? Result<ApplicationSettings>.Success(updated) : Result<ApplicationSettings>.Failure(saved.Error!);
         }

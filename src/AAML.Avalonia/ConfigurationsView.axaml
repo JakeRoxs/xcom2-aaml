@@ -5,12 +5,12 @@
       <TextBlock Classes="muted" Text="Edit mod INI files with atomic saves, external-change detection, snapshots, and recovery." />
     </StackPanel>
     <Grid Grid.Row="2" ColumnDefinitions="2*,Auto" ColumnSpacing="8">
-      <ComboBox ItemsSource="{Binding Documents}" SelectedItem="{Binding SelectedDocument, Mode=TwoWay}" PlaceholderText="Select a mod configuration">
+      <ComboBox AutomationProperties.AutomationId="ConfigurationsDocumentPicker" Width="640" HorizontalAlignment="Left" ItemsSource="{Binding Documents}" SelectedItem="{Binding SelectedDocument, Mode=TwoWay}" PlaceholderText="Select a mod configuration">
         <ComboBox.ItemTemplate>
           <DataTemplate>
             <StackPanel>
               <TextBlock Text="{Binding ModName}" />
-              <TextBlock Classes="muted small" Text="{Binding RelativePath}" />
+              <TextBlock Classes="muted small" MaxWidth="600" TextTrimming="CharacterEllipsis" Text="{Binding RelativePath}" />
             </StackPanel>
           </DataTemplate>
         </ComboBox.ItemTemplate>

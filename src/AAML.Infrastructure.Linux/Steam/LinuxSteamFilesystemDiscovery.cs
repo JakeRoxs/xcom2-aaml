@@ -47,6 +47,7 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
                 if (!File.Exists(vdf)) continue;
                 foreach (var entry in ReadLibraries(vdf))
                 {
+                    if (entry.Index == 0) continue;
                     var library = CreateLibrary(entry.Path, entry.Index, SteamLibrarySource.LibraryFoldersVdf);
                     if (!library.IsSuccess) return Task.FromResult(Failure(library.Error!.Code, library.Error.Message, library.Error.Kind));
                     libraries.Add(library.Value!);
@@ -183,6 +184,7 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
 
         var homeAliases = EnumerateHomeAliases(Environment.GetEnvironmentVariable("HOME")).ToArray();
         var data = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+        var isFlatpak = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FLATPAK_ID"));
         if (!string.IsNullOrWhiteSpace(data) && semantics.NormalizeIdentity(data).IsSuccess)
         {
             yield return data.TrimEnd('/') + "/Steam";
@@ -191,9 +193,12 @@ public sealed class LinuxSteamFilesystemDiscovery : ISteamFilesystemDiscovery
 
         foreach (var home in homeAliases)
         {
-            yield return home + "/.local/share/Steam";
-            yield return home + "/.steam/root";
-            yield return home + "/.steam/steam";
+            if (!isFlatpak)
+            {
+                yield return home + "/.local/share/Steam";
+                yield return home + "/.steam/root";
+                yield return home + "/.steam/steam";
+            }
             yield return home + "/.var/app/com.valvesoftware.Steam/.local/share/Steam";
             yield return home + "/.var/app/com.valvesoftware.Steam/.steam/root";
         }

@@ -158,7 +158,7 @@ public sealed partial class App : global::Avalonia.Application
     {
         desktop.MainWindow = new Window
         {
-            Title = "Avalonia Alternative Mod Launcher",
+            Title = "AAML",
             Icon = CreateWindowIcon(),
             Width = 1180,
             Height = 760,
@@ -265,7 +265,7 @@ public sealed partial class App : global::Avalonia.Application
             services.AddSingleton<IExternalLauncher, LinuxExternalLauncher>();
             services.AddSingleton<IGameLogLocator, UnavailableGameLogLocator>();
             services.AddSingleton<IGameUserDataLocator, LinuxGameUserDataLocator>();
-            services.AddSingleton<IGameLauncher>(_ => new LinuxSteamGameLauncher(requestStore));
+            services.AddSingleton<IGameLauncher>(_ => new LinuxGameLauncher(requestStore));
 #else
             throw new PlatformNotSupportedException("AAML currently supports Windows and native Linux.");
 #endif

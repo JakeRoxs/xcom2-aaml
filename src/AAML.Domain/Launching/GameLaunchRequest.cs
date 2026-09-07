@@ -25,7 +25,8 @@ public sealed record GameLaunchRequest(
     IReadOnlyList<string> ModRootLocations,
     IReadOnlyList<GameLaunchMod> ActiveMods,
     IReadOnlyList<LaunchArgument> Arguments,
-    bool ApplyConfiguration = true);
+    bool ApplyConfiguration = true,
+    GameRuntime Runtime = GameRuntime.Auto);
 
 /// <summary>Creates launch intent without reproducing legacy whole-command-line lowercasing.</summary>
 public static class GameLaunchPolicy
